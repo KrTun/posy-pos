@@ -383,6 +383,9 @@ var draft = null, pendingPhoto = null;
 var undoTimer = null, lastAdded = null;
 var renamingCat = null;
 var cloud = {url:"", token:"", at:0};   // 這支手機的雲端設定，不進程式碼
+var storageMode = "";                   // persisted | best-effort | ""（瀏覽器不支援）
+var isPreview = false;                  // 被嵌在別的網站裡（例如 Artifact 預覽），儲存空間是暫存的
+try { isPreview = window.top !== window.self; } catch(e){ isPreview = true; }
 
 /* ---------- helpers ---------- */
 function $(id){ return document.getElementById(id); }
@@ -699,8 +702,17 @@ function renderSettings(){
       '<div class="kv"><span>有照片</span><b class="num">' + sales.filter(function(s){ return s.hasPhoto; }).length + "</b></div>" +
       '<div class="kv"><span>品項數</span><b class="num">' + cats.length + "</b></div>" +
       '<div class="kv"><span>還沒上傳到雲端</span><b class="num">' + pendingCount() + "</b></div>" +
+      '<div class="kv"><span>永久保存</span><b>' +
+        (isPreview ? "預覽版，不保證" :
+         storageMode === "persisted" ? "已取得" :
+         storageMode === "best-effort" ? "沒取得" : "這個瀏覽器不支援") + "</b></div>" +
+      '<div class="kv"><span>已用空間</span><b class="num" id="usedVal">—</b></div>' +
+      '<p class="note-text">「已取得」表示瀏覽器答應不會因為空間不足清掉這個 App 的資料。加到主畫面之後通常就會取得。' +
+        (isPreview ? "你現在開的是嵌在別的網站裡的預覽版，資料隨時可能被清空。" : "") + "</p>" +
       (hasDemo ? '<button type="button" class="btn danger" id="clearDemo" style="margin-top:10px">清掉示範資料</button>' : "") +
     "</div>";
+
+  storageUsed().then(function(x){ var e = $("usedVal"); if (e) e.textContent = x || "—"; });
 
   var ri = $("editName");
   if (ri){ ri.focus(); ri.select(); }
@@ -1113,6 +1125,31 @@ async function clearDemo(){
   toast("示範資料已清掉");
 }
 
+/* ---------- 儲存空間的耐久度 ---------- */
+async function askPersist(){
+  try {
+    if (!navigator.storage || !navigator.storage.persist) return;
+    var ok = await navigator.storage.persisted();
+    if (!ok) ok = await navigator.storage.persist();      // 請瀏覽器別在空間不足時清掉這個網站
+    storageMode = ok ? "persisted" : "best-effort";
+  } catch(e){ storageMode = ""; }
+}
+async function storageUsed(){
+  try {
+    if (!navigator.storage || !navigator.storage.estimate) return "";
+    var e = await navigator.storage.estimate();
+    return kb(e.usage || 0);
+  } catch(e){ return ""; }
+}
+function showPreviewWarning(){
+  if ($("previewWarn")) return;
+  var w = document.createElement("div");
+  w.id = "previewWarn"; w.className = "warn";
+  w.innerHTML = "這是<b>預覽版</b>（嵌在別的網站裡面）。瀏覽器把這種頁面的資料當暫存，整個瀏覽器關掉就可能全部清空。" +
+    "真的要用來記帳，請開 App 版的網址，並加到主畫面。";
+  document.querySelector("main").prepend(w);
+}
+
 /* ---------- storage warning ---------- */
 function showStorageWarning(){
   if ($("storeWarn")) return;
@@ -1252,6 +1289,8 @@ $("payBtns").addEventListener("click", function(e){
   } catch(e){
     showStorageWarning();
   }
+  await askPersist();
+  if (isPreview) showPreviewWarning();
   renderAll();
 })();
 </script>

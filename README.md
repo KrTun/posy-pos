@@ -54,6 +54,22 @@
 
 ---
 
+## 資料會存多久（重要）
+
+| 開法 | 會不會被清掉 |
+|---|---|
+| **Artifact 預覽版**（嵌在 claude.ai 的框裡） | **會。** 瀏覽器把第三方框的儲存空間當暫存，關掉瀏覽器就可能全空。只能拿來看畫面，不要拿來記真的帳 |
+| **Android／Chrome 開網址** | 不會。第一方網站的 IndexedDB，關瀏覽器、重開機都在。只有「清除瀏覽資料」會清掉 |
+| **iPhone／Safari 開網址（沒加到主畫面）** | **七天沒開就會被清掉。** WebKit 的 ITP 規定：對網站沒有使用者互動滿 7 天，就刪掉所有腳本可寫的儲存空間，明文包含 IndexedDB、LocalStorage、Service Worker 快取 |
+| **iPhone 加到主畫面** | 不會。WebKit 明文把主畫面 Web App 的第一方網域排除在刪除演算法之外，而且資料跟 Safari 隔離 |
+
+依據：[Tracking Prevention in WebKit](https://webkit.org/tracking-prevention/)。
+
+所以**iPhone 一定要加到主畫面**，這不是方便性問題，是資料會不會被刪的問題。
+App 啟動時會呼叫 `navigator.storage.persist()` 請瀏覽器別清掉這個網站，但 Apple 沒有保證這對 ITP 的 7 天計時有效，不能當作唯一防線。
+
+兩條防線請都做：**加到主畫面** ＋ **設定好 Google 同步**。設定頁的「資料」卡片會顯示有沒有取得永久保存、用了多少空間。
+
 ## 改程式的流程
 
 只有一份程式碼：`index.html`。它同時是 Claude Artifact 的頁面本體，也是網站的來源。
@@ -89,5 +105,6 @@ apps-script\Code.gs     Google 試算表／Drive 後端
 
 - **照片是用檔案選取器**，按下去會跳「拍照／相簿」，不是相機即時取景。網頁拿不到相機預覽
 - **資料在哪支手機就在哪支手機**。換手機要靠 Google 同步或「匯出完整備份」的文字
+- iPhone 不加到主畫面的話，七天沒開就會被 Safari 清空（見上面「資料會存多久」）
 - 一張照片縮到 800px、JPEG 0.7，大約 50–90KB
 - Apps Script 免費額度對一個攤位綽綽有餘（每天 20,000 次 UrlFetch、6 分鐘單次執行上限）
