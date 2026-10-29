@@ -6,7 +6,7 @@
 /* Layout: one phone-width column — sticky day total on top, fixed bottom nav, full-screen two-step entry sheet. */
 :root{
   --bg:#fdeeea; --surface:#ffffff; --surface-2:#fbe2dc; --line:#f2cec6;
-  --ink:#2a1a18; --muted:#8a6b66; --faint:#c2a5a0;
+  --ink:#2a1a18; --muted:#7d5c57; --faint:#b99a95;
   --accent:#e4716a; --accent-ink:#ffffff; --accent-soft:#fcdfda;
   --cash:#2f7a4f; --bank:#3160a4; --linepay:#1f8a3b; --danger:#b3362b;
   --shadow:0 2px 12px rgba(120,70,64,.10);
@@ -15,14 +15,8 @@
   --display:"Playfair Display",Georgia,"Songti TC",serif;
   --r:14px;
 }
-@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
-  --bg:#1c1412; --surface:#271d1b; --surface-2:#332624; --line:#42302d;
-  --ink:#f6e9e6; --muted:#b69a95; --faint:#7d6360;
-  --accent:#ef8a83; --accent-ink:#2a100d; --accent-soft:#3c2724;
-  --cash:#5bbd84; --bank:#86b0ec; --linepay:#5cc777; --danger:#ef8075;
-  --shadow:0 2px 12px rgba(0,0,0,.45);
-  color-scheme:dark;
-}}
+/* 刻意不跟隨系統深色模式：這支 App 在戶外日光下用，而且品牌色本身就是淺粉。
+   深色只在使用者明確選擇時出現（Artifact 檢視器的主題切換）。 */
 :root[data-theme="dark"]{
   --bg:#1c1412; --surface:#271d1b; --surface-2:#332624; --line:#42302d;
   --ink:#f6e9e6; --muted:#b69a95; --faint:#7d6360;
