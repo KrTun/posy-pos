@@ -96,8 +96,10 @@ h2.sec{font-size:13px;font-weight:700;letter-spacing:.02em;color:var(--muted);ma
 .bars{display:flex;flex-direction:column;gap:9px}
 .bar-row{display:grid;grid-template-columns:4.5em 1fr auto;gap:9px;align-items:center;font-size:13px}
 .bar-row .label{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.track{height:9px;border-radius:5px;background:var(--surface-2);overflow:hidden}
-.fill{height:100%;border-radius:5px;background:var(--accent)}
+/* track 與 fill 都要 display:block —— inline 元素不吃 width/height，長條會全部變成滿的 */
+.track{display:block;height:10px;border-radius:5px;background:var(--surface-2);overflow:hidden}
+.fill{display:block;height:100%;border-radius:5px;background:var(--accent)}
+.bar-row.zero .label,.bar-row.zero .v{opacity:.45}
 .fill.cash{background:var(--cash)} .fill.bank{background:var(--bank)} .fill.linepay{background:var(--linepay)}
 .bar-row .v{font-family:var(--num);font-variant-numeric:tabular-nums;font-size:13px;color:var(--muted)}
 .spark{display:flex;align-items:flex-end;gap:3px;height:70px;margin-top:4px}
@@ -489,6 +491,8 @@ async function shrink(file){
 
 /* ---------- aggregation ---------- */
 function sumOf(list){ var t = 0; for (var i=0;i<list.length;i++) t += list[i].amount; return t; }
+/** 長條寬度：0 就真的是 0，非 0 至少留 4% 才看得見。 */
+function barW(v, max){ return (!v || !max) ? "0%" : Math.max(4, v / max * 100).toFixed(1) + "%"; }
 function byDay(key){ return sales.filter(function(s){ return dayKey(s.ts) === key; }); }
 function payTotals(list){
   var o = {cash:0, bank:0, linepay:0};
@@ -629,8 +633,8 @@ function renderStats(){
     '<div class="card" style="margin-top:10px"><div class="eyebrow">收款方式</div><div class="bars" style="margin-top:10px">' +
       PAYS.map(function(p){
         var v = pt[p.k] || 0;
-        return '<div class="bar-row"><span class="label">' + p.n + "</span>" +
-          '<span class="track"><i class="fill ' + p.k + '" style="width:' + (v/payMax*100).toFixed(1) + '%"></i></span>' +
+        return '<div class="bar-row' + (v ? "" : " zero") + '"><span class="label">' + p.n + "</span>" +
+          '<span class="track"><i class="fill ' + p.k + '" style="width:' + barW(v, payMax) + '"></i></span>' +
           '<span class="v">' + money(v) + "</span></div>";
       }).join("") +
     "</div></div>" +
@@ -638,7 +642,7 @@ function renderStats(){
     '<div class="card"><div class="eyebrow">品項</div><div class="bars" style="margin-top:10px">' +
       catRows.map(function(c){
         return '<div class="bar-row"><span class="label">' + esc(c.k) + "</span>" +
-          '<span class="track"><i class="fill" style="width:' + (c.sum/catMax*100).toFixed(1) + '%"></i></span>' +
+          '<span class="track"><i class="fill" style="width:' + barW(c.sum, catMax) + '"></i></span>' +
           '<span class="v">' + c.n + "件・" + money(c.sum) + "</span></div>";
       }).join("") +
     "</div></div>" +
