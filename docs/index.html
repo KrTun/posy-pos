@@ -1,0 +1,1289 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#0f6b5c">
+<meta name="description" content="Mobile till for a market stall: photo, item, amount, cash / transfer / LINE Pay.">
+<title>手作攤收銀</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon-192.png" sizes="192x192" type="image/png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="手作攤收銀">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=Noto+Sans+TC:wght@400;500;700&display=swap">
+<style>
+/* Same reset the Artifact viewer injects, so one source file renders identically in both places. */
+:root{color-scheme:light;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+html,body{margin:0}
+body{font:14px system-ui,-apple-system,sans-serif;background:#f1f2ef}
+img{max-width:100%}
+[hidden]{display:none!important}
+</style>
+</head>
+<body><style>
+/* Layout: one phone-width column — sticky day total on top, fixed bottom nav, full-screen two-step entry sheet. */
+:root{
+  --bg:#f1f2ef; --surface:#ffffff; --surface-2:#e8ebe6; --line:#d7dcd5;
+  --ink:#1c2220; --muted:#6a726d; --faint:#9aa39d;
+  --accent:#0f6b5c; --accent-ink:#ffffff; --accent-soft:#dcebe6;
+  --cash:#2f7a4f; --bank:#2f5f9e; --linepay:#1f8a3b; --danger:#b3362b;
+  --shadow:0 2px 12px rgba(28,34,32,.09);
+  --ui:"Noto Sans TC",system-ui,-apple-system,"Microsoft JhengHei",sans-serif;
+  --num:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+  --r:14px;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#141715; --surface:#1e2220; --surface-2:#282d2a; --line:#333a36;
+  --ink:#eceee9; --muted:#9aa29c; --faint:#777f79;
+  --accent:#4fbda7; --accent-ink:#0b1412; --accent-soft:#223230;
+  --cash:#5bbd84; --bank:#7fadea; --linepay:#5cc777; --danger:#e8766a;
+  --shadow:0 2px 12px rgba(0,0,0,.45);
+  color-scheme:dark;
+}}
+:root[data-theme="dark"]{
+  --bg:#141715; --surface:#1e2220; --surface-2:#282d2a; --line:#333a36;
+  --ink:#eceee9; --muted:#9aa29c; --faint:#777f79;
+  --accent:#4fbda7; --accent-ink:#0b1412; --accent-soft:#223230;
+  --cash:#5bbd84; --bank:#7fadea; --linepay:#5cc777; --danger:#e8766a;
+  --shadow:0 2px 12px rgba(0,0,0,.45);
+  color-scheme:dark;
+}
+
+*{box-sizing:border-box}
+body{
+  margin:0 auto; max-width:480px;
+  padding-left:max(16px,env(safe-area-inset-left,0px));
+  padding-right:max(16px,env(safe-area-inset-right,0px));
+  padding-block:0 116px;
+  background:var(--bg); color:var(--ink);
+  font-family:var(--ui); font-size:15px; line-height:1.5;
+  -webkit-tap-highlight-color:transparent;
+}
+body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset-top,0px);z-index:30;background:var(--bg)}
+button{font:inherit;color:inherit;cursor:pointer}
+.num{font-family:var(--num);font-variant-numeric:tabular-nums}
+.eyebrow{font-size:11.5px;letter-spacing:.09em;text-transform:uppercase;color:var(--muted);font-weight:500}
+
+/* ---- sticky day summary ---- */
+.top{
+  position:sticky; top:env(safe-area-inset-top,0px); z-index:20;
+  background:var(--bg); padding-block:14px 10px;
+  border-bottom:1px solid var(--line);
+}
+.top-row{display:flex;align-items:flex-end;justify-content:space-between;gap:12px}
+.total{font-family:var(--num);font-variant-numeric:tabular-nums;font-size:34px;font-weight:600;line-height:1.05;letter-spacing:-.01em}
+.count{color:var(--muted);font-size:13px;padding-bottom:4px}
+.paybar{display:flex;gap:8px;margin-top:10px}
+.paybar .cell{flex:1;min-width:0;background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:7px 9px}
+.paybar .cell b{display:block;font-family:var(--num);font-variant-numeric:tabular-nums;font-size:14px;font-weight:600}
+.paybar .cell span{display:block;font-size:11px;color:var(--muted);margin-bottom:1px}
+.cash b{color:var(--cash)} .bank b{color:var(--bank)} .linepay b{color:var(--linepay)}
+
+/* ---- sale rows ---- */
+h2.sec{font-size:13px;font-weight:700;letter-spacing:.02em;color:var(--muted);margin:22px 0 8px}
+.list{display:flex;flex-direction:column;gap:8px}
+.row{
+  display:flex;align-items:center;gap:11px;width:100%;text-align:left;
+  background:var(--surface);border:1px solid var(--line);border-radius:var(--r);
+  padding:9px 11px 9px 9px;
+}
+.row:active{background:var(--surface-2)}
+.thumb{width:46px;height:46px;border-radius:9px;flex:none;object-fit:cover;background:var(--surface-2);display:block}
+.thumb.empty{display:grid;place-items:center;color:var(--faint);font-size:17px}
+.thumb.lost{color:var(--danger);font-size:15px}
+.row .mid{flex:1;min-width:0}
+.row .cat{font-weight:500}
+.row .meta{font-size:12px;color:var(--muted);display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+.dot{width:5px;height:5px;border-radius:50%;background:currentColor;flex:none;opacity:.4}
+.row .amt{font-family:var(--num);font-variant-numeric:tabular-nums;font-weight:600;font-size:17px;flex:none}
+.tag{font-size:11px;font-weight:500}
+.tag.cash{color:var(--cash)} .tag.bank{color:var(--bank)} .tag.linepay{color:var(--linepay)}
+
+.empty-state{background:var(--surface);border:1px dashed var(--line);border-radius:var(--r);padding:22px 18px;text-align:center}
+.empty-state p{margin:0 0 4px;color:var(--muted);font-size:13.5px}
+.empty-state .big{color:var(--ink);font-size:15px;font-weight:500;margin-bottom:8px}
+
+/* ---- day group in log ---- */
+.day-head{display:flex;justify-content:space-between;align-items:baseline;margin:20px 0 8px;gap:10px}
+.day-head .d{font-weight:700;font-size:14.5px}
+.day-head .s{font-family:var(--num);font-variant-numeric:tabular-nums;color:var(--muted);font-size:13px}
+
+/* ---- stats ---- */
+.tiles{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.tile{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:10px}
+.tile b{display:block;font-family:var(--num);font-variant-numeric:tabular-nums;font-size:19px;font-weight:600;line-height:1.2}
+.tile span{font-size:11.5px;color:var(--muted)}
+.seg{display:flex;gap:6px;background:var(--surface-2);border-radius:10px;padding:3px;margin-top:4px}
+.seg button{flex:1;border:0;background:transparent;border-radius:8px;padding:7px 0;font-size:13px;color:var(--muted);font-weight:500}
+.seg button.on{background:var(--surface);color:var(--ink);box-shadow:var(--shadow)}
+.bars{display:flex;flex-direction:column;gap:9px}
+.bar-row{display:grid;grid-template-columns:4.5em 1fr auto;gap:9px;align-items:center;font-size:13px}
+.bar-row .label{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.track{height:9px;border-radius:5px;background:var(--surface-2);overflow:hidden}
+.fill{height:100%;border-radius:5px;background:var(--accent)}
+.fill.cash{background:var(--cash)} .fill.bank{background:var(--bank)} .fill.linepay{background:var(--linepay)}
+.bar-row .v{font-family:var(--num);font-variant-numeric:tabular-nums;font-size:13px;color:var(--muted)}
+.spark{display:flex;align-items:flex-end;gap:3px;height:70px;margin-top:4px}
+.spark .col{flex:1;min-width:0;display:flex;flex-direction:column;justify-content:flex-end;height:100%}
+.spark .col i{display:block;background:var(--accent-soft);border-radius:3px 3px 0 0;min-height:2px}
+.spark .col i.hot{background:var(--accent)}
+.spark-x{display:flex;gap:3px;margin-top:5px}
+.spark-x span{flex:1;min-width:0;text-align:center;font-size:9.5px;color:var(--faint);font-family:var(--num)}
+
+.card{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:14px}
+.card + .card{margin-top:10px}
+.note-text{font-size:12.5px;color:var(--muted);margin:8px 0 0}
+.btn{display:block;width:100%;border:1px solid var(--line);background:var(--surface);border-radius:11px;padding:12px;font-weight:500;text-align:center}
+.btn + .btn{margin-top:8px}
+.btn:active{background:var(--surface-2)}
+.btn.primary{background:var(--accent);color:var(--accent-ink);border-color:transparent;font-weight:700}
+.btn.primary:disabled{opacity:.4}
+.btn.ghost{background:transparent}
+.btn.danger{color:var(--danger);border-color:var(--danger)}
+
+/* ---- category manager ---- */
+.cat-list{display:flex;flex-direction:column;gap:7px;margin-top:10px}
+.cat-row{display:flex;align-items:center;gap:7px;background:var(--surface-2);border-radius:11px;padding:7px 8px 7px 11px}
+.cat-row .nm{flex:1;min-width:0;overflow:hidden}
+.cat-row .nm b{display:block;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cat-row .nm em{display:block;font-style:normal;font-size:11px;color:var(--muted);font-family:var(--num)}
+.cat-row.edit{flex-wrap:wrap}
+.cat-row.edit input[type=text]{flex:1 1 7em}
+.chip em{font-style:normal;font-family:var(--num);font-size:12px;opacity:.7;margin-left:3px}
+.mini{border:1px solid var(--line);background:var(--surface);border-radius:8px;width:32px;height:32px;flex:none;font-size:13px;line-height:1;display:grid;place-items:center;padding:0}
+.mini:disabled{opacity:.3}
+.mini.x{color:var(--danger)}
+.cat-row input[type=text]{flex:1;min-width:0;padding:7px 9px}
+.inline-add{display:flex;gap:7px;margin-top:10px}
+
+input[type=text],textarea{
+  width:100%;border:1px solid var(--line);background:var(--surface);color:var(--ink);
+  border-radius:11px;padding:11px 12px;font:inherit;
+}
+textarea{resize:vertical;min-height:90px;font-family:var(--num);font-size:11.5px;line-height:1.35}
+
+/* ---- fab + nav ---- */
+.fab{
+  position:fixed; z-index:25;
+  left:max(16px,env(safe-area-inset-left,0px)); right:max(16px,env(safe-area-inset-right,0px));
+  bottom:calc(60px + env(safe-area-inset-bottom,0px));
+  max-width:448px; margin:0 auto;
+  border:0; border-radius:13px; padding:15px;
+  background:var(--accent); color:var(--accent-ink);
+  font-size:16.5px; font-weight:700; letter-spacing:.02em;
+  box-shadow:0 6px 18px rgba(15,107,92,.3);
+}
+.nav{
+  position:fixed; inset:auto 0 0; z-index:26;
+  display:flex; background:var(--surface); border-top:1px solid var(--line);
+  padding-bottom:env(safe-area-inset-bottom,0px);
+  padding-left:max(0px,env(safe-area-inset-left,0px)); padding-right:max(0px,env(safe-area-inset-right,0px));
+}
+.nav button{flex:1;border:0;background:transparent;padding:13px 0 14px;font-size:13px;color:var(--muted);font-weight:500}
+.nav button.on{color:var(--accent);font-weight:700;box-shadow:inset 0 2px 0 var(--accent)}
+
+/* ---- sheets ---- */
+.sheet{
+  position:fixed; inset:0; z-index:40; background:var(--bg); overflow-y:auto; overscroll-behavior:contain;
+  padding-top:env(safe-area-inset-top,0px); padding-bottom:calc(20px + env(safe-area-inset-bottom,0px));
+  padding-left:max(16px,env(safe-area-inset-left,0px)); padding-right:max(16px,env(safe-area-inset-right,0px));
+}
+.sheet-in{max-width:448px;margin:0 auto}
+.sheet-bar{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:12px 0;position:sticky;top:0;background:var(--bg);z-index:2}
+.sheet-bar h1{font-size:16px;font-weight:700;margin:0}
+.sheet-bar button{border:0;background:transparent;padding:6px 2px;color:var(--accent);font-weight:500;font-size:14px}
+.field{margin-top:14px}
+.field > label{display:block;font-size:12px;font-weight:500;color:var(--muted);margin-bottom:7px;letter-spacing:.03em}
+.chips{display:flex;flex-wrap:wrap;gap:7px}
+.chip{border:1px solid var(--line);background:var(--surface);border-radius:999px;padding:8px 14px;font-size:14px}
+.chip.on{background:var(--accent);color:var(--accent-ink);border-color:transparent;font-weight:500}
+.shot{
+  width:100%;border:1px dashed var(--line);background:var(--surface);border-radius:var(--r);
+  padding:16px;display:flex;align-items:center;justify-content:center;gap:9px;color:var(--muted);font-size:14px;
+}
+.shot-wrap{position:relative}
+.shot-img{width:100%;max-width:100%;aspect-ratio:4/3;object-fit:cover;border-radius:var(--r);display:block;border:1px solid var(--line)}
+.shot-x{position:absolute;top:8px;right:8px;border:0;border-radius:999px;background:rgba(0,0,0,.6);color:#fff;width:32px;height:32px;font-size:15px;line-height:1}
+.amount-box{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:12px 14px;display:flex;align-items:baseline;justify-content:space-between;gap:8px}
+.amount-box .cur{color:var(--muted);font-size:15px;font-weight:500}
+.amount-box .val{font-family:var(--num);font-variant-numeric:tabular-nums;font-size:36px;font-weight:600;line-height:1.1}
+.amount-box .val.zero{color:var(--faint)}
+.quick{display:flex;flex-wrap:wrap;gap:7px;margin-top:8px}
+.quick button{border:1px solid var(--line);background:var(--surface);border-radius:9px;padding:7px 11px;font-family:var(--num);font-size:13.5px;color:var(--muted)}
+.pad{display:grid;grid-template-columns:repeat(3,1fr);gap:7px;margin-top:10px}
+.pad button{
+  border:1px solid var(--line);background:var(--surface);border-radius:11px;padding:15px 0;
+  font-family:var(--num);font-size:22px;font-weight:500;
+}
+.pad button:active{background:var(--surface-2)}
+.pad button.wide{font-family:var(--ui);font-size:15px}
+.recap{background:var(--accent-soft);border-radius:var(--r);padding:13px 15px;display:flex;align-items:baseline;justify-content:space-between;gap:10px}
+.recap .l{font-weight:500}
+.recap .r{font-family:var(--num);font-variant-numeric:tabular-nums;font-size:26px;font-weight:600}
+.pays{display:flex;flex-direction:column;gap:9px;margin-top:14px}
+.pay-btn{
+  display:flex;align-items:center;justify-content:space-between;gap:10px;width:100%;
+  border:1px solid var(--line);background:var(--surface);border-radius:13px;padding:17px 18px;
+  font-size:17px;font-weight:700;
+}
+.pay-btn .hint{font-size:12px;font-weight:400;color:var(--muted)}
+.pay-btn.cash{color:var(--cash)} .pay-btn.bank{color:var(--bank)} .pay-btn.linepay{color:var(--linepay)}
+.detail-img{width:100%;border-radius:var(--r);display:block;border:1px solid var(--line)}
+.kv{display:flex;justify-content:space-between;gap:12px;padding:9px 0;border-bottom:1px solid var(--line);font-size:14px}
+.kv:last-child{border-bottom:0}
+.kv span{color:var(--muted)}
+.kv b{font-weight:500}
+
+.toast{
+  position:fixed;z-index:50;left:max(16px,env(safe-area-inset-left,0px));right:max(16px,env(safe-area-inset-right,0px));
+  bottom:calc(126px + env(safe-area-inset-bottom,0px));max-width:448px;margin:0 auto;
+  background:var(--ink);color:var(--bg);border-radius:12px;padding:12px 14px;
+  display:flex;align-items:center;justify-content:space-between;gap:12px;box-shadow:var(--shadow);font-size:14px;
+}
+.toast button{border:0;background:transparent;color:var(--accent);font-weight:700;padding:2px 4px}
+.warn{background:var(--surface);border:1px solid var(--danger);color:var(--danger);border-radius:12px;padding:11px 13px;font-size:13px;margin-top:12px}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+</style>
+
+<header class="top">
+  <div class="top-row">
+    <div>
+      <div class="eyebrow" id="todayLabel">今天</div>
+      <div class="total num" id="todayTotal">NT$0</div>
+    </div>
+    <div class="count" id="todayCount">0 筆</div>
+  </div>
+  <div class="paybar" id="todayPays"></div>
+</header>
+
+<main>
+  <section id="view-today">
+    <h2 class="sec">今天的紀錄</h2>
+    <div class="list" id="todayList"></div>
+    <button type="button" class="btn" id="copyDayBtn" style="margin-top:14px" hidden>複製今日結帳</button>
+  </section>
+
+  <section id="view-log" hidden>
+    <h2 class="sec">全部紀錄</h2>
+    <div id="logBody"></div>
+  </section>
+
+  <section id="view-stats" hidden>
+    <h2 class="sec">統計</h2>
+    <div class="seg" id="statSeg">
+      <button data-range="month" class="on">本月</button>
+      <button data-range="all">全部</button>
+    </div>
+    <div id="statBody"></div>
+  </section>
+
+  <section id="view-set" hidden>
+    <h2 class="sec">設定</h2>
+    <div id="setBody"></div>
+  </section>
+</main>
+
+<button class="fab" id="fab">＋ 記一筆</button>
+
+<nav class="nav" id="nav">
+  <button data-view="today" class="on">今天</button>
+  <button data-view="log">紀錄</button>
+  <button data-view="stats">統計</button>
+  <button data-view="set">設定</button>
+</nav>
+
+<!-- ===== entry sheet ===== -->
+<div class="sheet" id="sheet" hidden>
+  <div class="sheet-in">
+    <div id="step1">
+      <div class="sheet-bar">
+        <button type="button" id="cancelEntry">取消</button>
+        <h1>記一筆</h1>
+        <button type="button" id="toStep2" style="color:var(--muted)">下一步</button>
+      </div>
+
+      <div class="field">
+        <label for="shotInput">商品照片（選填）</label>
+        <input type="file" id="shotInput" accept="image/*" hidden>
+        <button type="button" class="shot" id="shotBtn">＋ 拍照／從相簿選</button>
+        <div class="shot-wrap" id="shotWrap" hidden>
+          <img class="shot-img" id="shotImg" alt="這筆商品的照片">
+          <button type="button" class="shot-x" id="shotClear" aria-label="移除照片">✕</button>
+        </div>
+      </div>
+
+      <div class="field">
+        <label>品項</label>
+        <div class="chips" id="catChips"></div>
+        <p class="note-text">點品項會自動帶入它的預設價，直接按下面的鍵盤就能改成現場的價錢。預設價、改名、順序都在「設定」頁。</p>
+      </div>
+
+      <div class="field">
+        <label>金額</label>
+        <div class="amount-box">
+          <span class="cur">NT$</span>
+          <span class="val zero" id="amtVal">0</span>
+        </div>
+        <div class="quick" id="quickAmts"></div>
+        <div class="pad" id="pad">
+          <button type="button" data-k="1">1</button><button type="button" data-k="2">2</button><button type="button" data-k="3">3</button>
+          <button type="button" data-k="4">4</button><button type="button" data-k="5">5</button><button type="button" data-k="6">6</button>
+          <button type="button" data-k="7">7</button><button type="button" data-k="8">8</button><button type="button" data-k="9">9</button>
+          <button type="button" data-k="00" class="wide">00</button><button type="button" data-k="0">0</button><button type="button" data-k="del" class="wide">⌫</button>
+        </div>
+      </div>
+
+      <div class="field">
+        <button type="button" class="btn primary" id="next1" disabled>下一步：收款方式</button>
+      </div>
+    </div>
+
+    <div id="step2" hidden>
+      <div class="sheet-bar">
+        <button type="button" id="backStep1">← 上一步</button>
+        <h1>收款方式</h1>
+        <span style="width:3.4em"></span>
+      </div>
+
+      <div class="recap">
+        <span class="l" id="recapCat">—</span>
+        <span class="r num" id="recapAmt">NT$0</span>
+      </div>
+
+      <div class="field">
+        <label for="noteInput">備註（選填，例如賣給誰）</label>
+        <input type="text" id="noteInput" placeholder="例：市集攤友、客人訂做" maxlength="40">
+      </div>
+
+      <div class="pays" id="payBtns"></div>
+      <p class="note-text">按下收款方式就完成這一筆，按錯可以馬上撤銷。</p>
+    </div>
+  </div>
+</div>
+
+<!-- ===== detail sheet ===== -->
+<div class="sheet" id="detail" hidden>
+  <div class="sheet-in">
+    <div class="sheet-bar">
+      <button type="button" id="closeDetail">← 返回</button>
+      <h1>這一筆</h1>
+      <span style="width:3.4em"></span>
+    </div>
+    <div id="detailBody"></div>
+  </div>
+</div>
+
+<div class="toast" id="toast" hidden><span id="toastMsg"></span><button type="button" id="toastAct">撤銷</button></div>
+
+<script>
+"use strict";
+/* ---------- constants ---------- */
+var PAYS = [
+  {k:"cash",    n:"現金",     hint:"收現、找零"},
+  {k:"bank",    n:"匯款",     hint:"轉帳、ATM"},
+  {k:"linepay", n:"LINE Pay", hint:"掃碼收款"}
+];
+var PAYMAP = {cash:"現金", bank:"匯款", linepay:"LINE Pay"};
+var CATS_DEFAULT = [
+  {name:"項鍊", price:0}, {name:"手鍊", price:0}, {name:"戒指", price:0},
+  {name:"耳環", price:0}, {name:"其他", price:0}
+];
+var MAX_EDGE = 800, JPEG_Q = 0.7;
+
+/* ---------- state ---------- */
+var sales = [];           // {id, ts, cat, amount, pay, note, hasPhoto, demo}
+var cats = CATS_DEFAULT.map(function(c){ return {name:c.name, price:c.price}; });  // price 0 = 不自動帶價
+var db = null;
+var photoMem = new Map();  // id -> data URL
+var view = "today", statRange = "month";
+var draft = null, pendingPhoto = null;
+var undoTimer = null, lastAdded = null;
+var renamingCat = null;
+var cloud = {url:"", token:"", at:0};   // 這支手機的雲端設定，不進程式碼
+
+/* ---------- helpers ---------- */
+function $(id){ return document.getElementById(id); }
+function money(n){ return "NT$" + Math.round(n).toLocaleString("zh-TW"); }
+function pad2(n){ return (n<10?"0":"") + n; }
+function dayKey(ts){ var d = new Date(ts); return d.getFullYear() + "-" + pad2(d.getMonth()+1) + "-" + pad2(d.getDate()); }
+function monthKey(ts){ var d = new Date(ts); return d.getFullYear() + "-" + pad2(d.getMonth()+1); }
+function hhmm(ts){ var d = new Date(ts); return pad2(d.getHours()) + ":" + pad2(d.getMinutes()); }
+function dayLabel(key){
+  var p = key.split("-"), d = new Date(+p[0], +p[1]-1, +p[2]);
+  var w = ["日","一","二","三","四","五","六"][d.getDay()];
+  return (+p[1]) + "/" + (+p[2]) + "（" + w + "）";
+}
+function todayKey(){ return dayKey(Date.now()); }
+function uid(){ return Date.now().toString(36) + Math.random().toString(36).slice(2,7); }
+function esc(s){ return String(s).replace(/[&<>"']/g, function(c){ return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]; }); }
+function kb(n){ return n > 1024*1024 ? (n/1024/1024).toFixed(1) + " MB" : Math.round(n/1024) + " KB"; }
+
+/* ---------- storage (IndexedDB; photos are stored as data-URL strings) ---------- */
+function openDB(){
+  return new Promise(function(res, rej){
+    var r;
+    try { r = indexedDB.open("stall-pos", 1); } catch(e){ rej(e); return; }
+    r.onupgradeneeded = function(){
+      var d = r.result;
+      if (!d.objectStoreNames.contains("sales")) d.createObjectStore("sales", {keyPath:"id"});
+      if (!d.objectStoreNames.contains("photos")) d.createObjectStore("photos");
+      if (!d.objectStoreNames.contains("meta")) d.createObjectStore("meta");
+    };
+    r.onsuccess = function(){ res(r.result); };
+    r.onerror = function(){ rej(r.error); };
+  });
+}
+function tx(store, mode){ return db.transaction(store, mode || "readonly").objectStore(store); }
+function req(r){ return new Promise(function(res, rej){ r.onsuccess = function(){ res(r.result); }; r.onerror = function(){ rej(r.error); }; }); }
+async function putSale(s){ if (db) await req(tx("sales","readwrite").put(s)); }
+async function delSale(id){
+  if (!db) return;
+  await req(tx("sales","readwrite").delete(id));
+  try { await req(tx("photos","readwrite").delete(id)); } catch(e){}
+  photoMem.delete(id);
+}
+async function putPhoto(id, dataURL){ if (db) await req(tx("photos","readwrite").put(dataURL, id)); }
+async function getPhoto(id){ if (!db) return null; try { return await req(tx("photos").get(id)); } catch(e){ return null; } }
+async function putMeta(k, v){ if (db) try { await req(tx("meta","readwrite").put(v, k)); } catch(e){} }
+async function saveCats(){ await putMeta("cats", cats); }
+
+function blobToDataURL(b){
+  return new Promise(function(res, rej){
+    var r = new FileReader();
+    r.onload = function(){ res(r.result); };
+    r.onerror = function(){ rej(r.error); };
+    r.readAsDataURL(b);
+  });
+}
+async function photoSrc(id){
+  if (photoMem.has(id)) return photoMem.get(id);
+  var v = await getPhoto(id);
+  if (!v) return null;
+  if (typeof v !== "string"){            // written by the first build, which stored Blobs
+    try { v = await blobToDataURL(v); await putPhoto(id, v); } catch(e){ return null; }
+  }
+  photoMem.set(id, v);
+  return v;
+}
+
+/* ---------- image shrinking ---------- */
+async function shrink(file){
+  var src = null;
+  try { src = await createImageBitmap(file, {imageOrientation:"from-image"}); }
+  catch(e){
+    src = await new Promise(function(res, rej){
+      var u = URL.createObjectURL(file), i = new Image();
+      i.onload = function(){ URL.revokeObjectURL(u); res(i); };
+      i.onerror = function(){ URL.revokeObjectURL(u); rej(new Error("讀不到這張圖")); };
+      i.src = u;
+    });
+  }
+  var w = src.width, h = src.height, s = Math.min(1, MAX_EDGE / Math.max(w, h));
+  var cw = Math.max(1, Math.round(w*s)), ch = Math.max(1, Math.round(h*s));
+  var c = document.createElement("canvas");
+  c.width = cw; c.height = ch;
+  c.getContext("2d").drawImage(src, 0, 0, cw, ch);
+  if (src.close) src.close();
+  return c.toDataURL("image/jpeg", JPEG_Q);
+}
+
+/* ---------- aggregation ---------- */
+function sumOf(list){ var t = 0; for (var i=0;i<list.length;i++) t += list[i].amount; return t; }
+function byDay(key){ return sales.filter(function(s){ return dayKey(s.ts) === key; }); }
+function payTotals(list){
+  var o = {cash:0, bank:0, linepay:0};
+  list.forEach(function(s){ if (o[s.pay] === undefined) o[s.pay] = 0; o[s.pay] += s.amount; });
+  return o;
+}
+function usedCount(cat){ return sales.filter(function(s){ return s.cat === cat; }).length; }
+function normCats(v){
+  var out = [];
+  (v || []).forEach(function(c){
+    if (typeof c === "string") out.push({name:c, price:0});                       // first build stored plain names
+    else if (c && c.name) out.push({name:String(c.name), price:Math.max(0, parseInt(c.price, 10) || 0)});
+  });
+  return out.length ? out : CATS_DEFAULT.map(function(c){ return {name:c.name, price:c.price}; });
+}
+function catIndex(name){ for (var i=0;i<cats.length;i++) if (cats[i].name === name) return i; return -1; }
+function catPrice(name){ var i = catIndex(name); return i === -1 ? 0 : cats[i].price; }
+function quickAmounts(){
+  var count = {};
+  sales.forEach(function(s){ count[s.amount] = (count[s.amount]||0) + 1; });
+  return Object.keys(count)
+    .map(function(a){ return {a:+a, c:count[a]}; })
+    .sort(function(x,y){ return y.c - x.c || y.a - x.a; })
+    .slice(0, 6)
+    .sort(function(x,y){ return x.a - y.a; })
+    .map(function(o){ return o.a; });
+}
+
+/* ---------- rendering: header ---------- */
+function renderTop(){
+  var list = byDay(todayKey());
+  $("todayLabel").textContent = dayLabel(todayKey()) + " 今日營收";
+  $("todayTotal").textContent = money(sumOf(list));
+  $("todayCount").textContent = list.length + " 筆";
+  var t = payTotals(list);
+  $("todayPays").innerHTML = PAYS.map(function(p){
+    return '<div class="cell ' + p.k + '"><span>' + p.n + '</span><b>' + money(t[p.k]||0) + "</b></div>";
+  }).join("");
+}
+
+/* ---------- rendering: rows ---------- */
+function rowHTML(s){
+  return '<button type="button" class="row" data-id="' + s.id + '">' +
+    (s.hasPhoto
+      ? '<img class="thumb" data-photo="' + s.id + '" alt="' + esc(s.cat) + '的照片">'
+      : '<span class="thumb empty" aria-hidden="true">◇</span>') +
+    '<span class="mid"><span class="cat">' + esc(s.cat) + '</span>' +
+      '<span class="meta"><span class="tag ' + s.pay + '">' + esc(PAYMAP[s.pay] || s.pay) + "</span>" +
+      '<span class="dot"></span>' + hhmm(s.ts) +
+      (s.note ? '<span class="dot"></span>' + esc(s.note) : "") +
+    "</span></span>" +
+    '<span class="amt">' + money(s.amount) + "</span></button>";
+}
+async function hydrateThumbs(root){
+  var imgs = root.querySelectorAll("img[data-photo]");
+  for (var i=0;i<imgs.length;i++){
+    var el = imgs[i];
+    var u = await photoSrc(el.getAttribute("data-photo"));
+    if (u) el.src = u;
+    else el.outerHTML = '<span class="thumb empty lost" title="這張照片存不見了">⚠</span>';
+  }
+}
+
+function renderToday(){
+  var list = byDay(todayKey()).slice().sort(function(a,b){ return b.ts - a.ts; });
+  var el = $("todayList");
+  $("copyDayBtn").hidden = !list.length;
+  if (!list.length){
+    el.innerHTML =
+      '<div class="empty-state"><p class="big">今天還沒有紀錄</p>' +
+      "<p>流程是：拍照 → 選品項 → 按金額 → 選收款方式，三秒一筆。</p>" +
+      (sales.length ? "" : '<button type="button" class="btn ghost" id="demoBtn" style="margin-top:12px">放三筆示範資料看看</button>') +
+      "</div>";
+    var d = $("demoBtn");
+    if (d) d.addEventListener("click", addDemo);
+    return;
+  }
+  el.innerHTML = list.map(rowHTML).join("");
+  hydrateThumbs(el);
+}
+
+function renderLog(){
+  var el = $("logBody");
+  if (!sales.length){
+    el.innerHTML = '<div class="empty-state"><p class="big">還沒有任何紀錄</p><p>記的每一筆都會按日期收在這裡。</p></div>';
+    return;
+  }
+  var groups = {};
+  sales.forEach(function(s){ var k = dayKey(s.ts); (groups[k] = groups[k] || []).push(s); });
+  var keys = Object.keys(groups).sort().reverse();
+  el.innerHTML = keys.map(function(k){
+    var g = groups[k].slice().sort(function(a,b){ return b.ts - a.ts; });
+    return '<div class="day-head"><span class="d">' + dayLabel(k) + "</span>" +
+      '<span class="s">' + g.length + " 筆・" + money(sumOf(g)) + "</span></div>" +
+      '<div class="list">' + g.map(rowHTML).join("") + "</div>";
+  }).join("");
+  hydrateThumbs(el);
+}
+
+function renderStats(){
+  var list = statRange === "month"
+    ? sales.filter(function(s){ return monthKey(s.ts) === monthKey(Date.now()); })
+    : sales.slice();
+  var total = sumOf(list), n = list.length;
+  var el = $("statBody");
+  if (!n){
+    el.innerHTML = '<div class="empty-state" style="margin-top:12px"><p class="big">這段期間還沒有紀錄</p><p>記幾筆之後，這裡會算出品項和收款方式的佔比。</p></div>';
+    return;
+  }
+
+  var pt = payTotals(list);
+  var payMax = Math.max(pt.cash, pt.bank, pt.linepay, 1);
+
+  var catAgg = {};
+  list.forEach(function(s){
+    var c = catAgg[s.cat] = catAgg[s.cat] || {sum:0, n:0};
+    c.sum += s.amount; c.n++;
+  });
+  var catRows = Object.keys(catAgg).map(function(k){ return {k:k, sum:catAgg[k].sum, n:catAgg[k].n}; })
+    .sort(function(a,b){ return b.sum - a.sum; });
+  var catMax = catRows.length ? catRows[0].sum : 1;
+
+  var days = [];
+  for (var i=13;i>=0;i--){
+    var d = new Date(); d.setHours(0,0,0,0); d.setDate(d.getDate()-i);
+    var k = dayKey(d.getTime());
+    days.push({k:k, sum:sumOf(byDay(k)), d:d});
+  }
+  var dayMax = Math.max.apply(null, days.map(function(x){ return x.sum; }).concat([1]));
+
+  el.innerHTML =
+    '<div class="tiles" style="margin-top:12px">' +
+      '<div class="tile"><b>' + money(total) + "</b><span>營收</span></div>" +
+      '<div class="tile"><b>' + n + "</b><span>筆數</span></div>" +
+      '<div class="tile"><b>' + money(total/n) + "</b><span>平均單價</span></div>" +
+    "</div>" +
+
+    '<div class="card" style="margin-top:10px"><div class="eyebrow">收款方式</div><div class="bars" style="margin-top:10px">' +
+      PAYS.map(function(p){
+        var v = pt[p.k] || 0;
+        return '<div class="bar-row"><span class="label">' + p.n + "</span>" +
+          '<span class="track"><i class="fill ' + p.k + '" style="width:' + (v/payMax*100).toFixed(1) + '%"></i></span>' +
+          '<span class="v">' + money(v) + "</span></div>";
+      }).join("") +
+    "</div></div>" +
+
+    '<div class="card"><div class="eyebrow">品項</div><div class="bars" style="margin-top:10px">' +
+      catRows.map(function(c){
+        return '<div class="bar-row"><span class="label">' + esc(c.k) + "</span>" +
+          '<span class="track"><i class="fill" style="width:' + (c.sum/catMax*100).toFixed(1) + '%"></i></span>' +
+          '<span class="v">' + c.n + "件・" + money(c.sum) + "</span></div>";
+      }).join("") +
+    "</div></div>" +
+
+    '<div class="card"><div class="eyebrow">近 14 天</div>' +
+      '<div class="spark">' + days.map(function(x){
+        var h = (x.sum / dayMax * 100).toFixed(1);
+        return '<span class="col" title="' + x.k + " " + money(x.sum) + '"><i class="' + (x.sum?"hot":"") + '" style="height:' + h + '%"></i></span>';
+      }).join("") + "</div>" +
+      '<div class="spark-x">' + days.map(function(x, i){
+        return "<span>" + (i % 3 === 0 ? (x.d.getMonth()+1) + "/" + x.d.getDate() : "") + "</span>";
+      }).join("") + "</div>" +
+      '<p class="note-text">最高的一天 ' + money(dayMax) + "</p>" +
+    "</div>";
+}
+
+/* ---------- rendering: settings ---------- */
+function catRowHTML(c, i){
+  if (renamingCat === c.name){
+    return '<div class="cat-row edit">' +
+      '<input type="text" id="editName" value="' + esc(c.name) + '" maxlength="8" aria-label="品項名稱">' +
+      '<input type="text" id="editPrice" inputmode="numeric" value="' + (c.price || "") + '" placeholder="預設價" aria-label="預設價">' +
+      '<button type="button" class="mini" data-edit-ok="' + esc(c.name) + '" aria-label="儲存">✓</button>' +
+      '<button type="button" class="mini" data-edit-cancel="1" aria-label="取消">✕</button></div>';
+  }
+  return '<div class="cat-row">' +
+    '<span class="nm"><b>' + esc(c.name) + "</b>" +
+      '<em>' + (c.price ? "預設 " + money(c.price) : "沒設預設價") + "・" + usedCount(c.name) + " 筆</em></span>" +
+    '<button type="button" class="mini" data-up="' + i + '"' + (i === 0 ? " disabled" : "") + ' aria-label="往上移">↑</button>' +
+    '<button type="button" class="mini" data-down="' + i + '"' + (i === cats.length-1 ? " disabled" : "") + ' aria-label="往下移">↓</button>' +
+    '<button type="button" class="mini" data-edit="' + esc(c.name) + '" aria-label="改名或改預設價">✎</button>' +
+    '<button type="button" class="mini x" data-del="' + esc(c.name) + '"' + (cats.length < 2 ? " disabled" : "") + ' aria-label="刪除">✕</button>' +
+  "</div>";
+}
+function renderSettings(){
+  var hasDemo = sales.some(function(s){ return s.demo; });
+  $("setBody").innerHTML =
+    '<div class="card"><div class="eyebrow">品項與預設價</div>' +
+      '<p class="note-text">預設價會在記帳時自動填進金額，現場賣別的價錢就按鍵盤改掉，不會動到預設價。留空或 0 就是不自動帶。上下箭頭調順序，常賣的放前面。✎ 改名會連過去的紀錄一起改；✕ 只是從按鈕列拿掉，記過的紀錄不會動。</p>' +
+      '<div class="cat-list" id="catList">' + cats.map(catRowHTML).join("") + "</div>" +
+      '<div class="inline-add"><input type="text" id="newCat" placeholder="新品項名稱" maxlength="8">' +
+      '<input type="text" id="newCatPrice" inputmode="numeric" placeholder="預設價" style="flex:0 0 5.5em">' +
+      '<button type="button" class="chip on" id="newCatOk" style="flex:none">新增</button></div>' +
+    "</div>" +
+
+    '<div class="card"><div class="eyebrow">備份</div>' +
+      '<p class="note-text">資料存在這支手機的瀏覽器裡，換手機或清掉瀏覽器資料就會不見。收攤後匯出一份貼到雲端硬碟或自己的 LINE，就有長期的備份。</p>' +
+      '<button type="button" class="btn" id="copyCsv" style="margin-top:10px">複製明細 CSV（給 Excel／Google 試算表）</button>' +
+      '<button type="button" class="btn" id="expLedger">匯出帳目備份（不含照片）</button>' +
+      '<button type="button" class="btn" id="expFull">匯出完整備份（含照片，檔案大）</button>' +
+      '<div id="expOut" hidden style="margin-top:10px"></div>' +
+    "</div>" +
+
+    '<div class="card"><div class="eyebrow">Google 雲端同步</div>' +
+      '<p class="note-text">設定一次之後，按「上傳」就會把帳目寫進你的 Google 試算表、照片存到 Drive 資料夾。網址和金鑰只存在這支手機，不會寫進程式碼。設定步驟看專案裡的 README。</p>' +
+      '<div class="field"><label for="cloudUrl">Apps Script 網址（／exec 結尾）</label>' +
+        '<input type="text" id="cloudUrl" value="' + esc(cloud.url) + '" placeholder="https://script.google.com/macros/s/…/exec"></div>' +
+      '<div class="field"><label for="cloudToken">金鑰</label>' +
+        '<input type="text" id="cloudToken" value="' + esc(cloud.token) + '" placeholder="跟 Apps Script 的 TOKEN 一樣"></div>' +
+      '<button type="button" class="btn" id="cloudSaveBtn" style="margin-top:10px">儲存雲端設定</button>' +
+      '<button type="button" class="btn" id="cloudPingBtn"' + (cloud.url ? "" : " disabled") + ">測試連線</button>" +
+      '<button type="button" class="btn primary" id="cloudPush"' + (cloud.url ? "" : " disabled") + ">上傳到 Google（" + pendingCount() + " 筆待傳）</button>" +
+      '<button type="button" class="btn" id="cloudPull"' + (cloud.url ? "" : " disabled") + ">從 Google 拉回合併</button>" +
+      '<p class="note-text">' + (cloud.at ? "上次同步：" + new Date(cloud.at).toLocaleString("zh-TW") : "還沒同步過") + "</p>" +
+    "</div>" +
+
+    '<div class="card"><div class="eyebrow">還原</div>' +
+      '<p class="note-text">把之前匯出的備份文字貼進來，按還原。同一筆（id 相同）不會重複匯入。</p>' +
+      '<textarea id="impBox" placeholder="在這裡貼上備份文字" style="margin-top:10px"></textarea>' +
+      '<button type="button" class="btn" id="impRun" style="margin-top:8px">從備份還原</button>' +
+    "</div>" +
+
+    '<div class="card"><div class="eyebrow">資料</div>' +
+      '<div class="kv"><span>總筆數</span><b class="num">' + sales.length + "</b></div>" +
+      '<div class="kv"><span>有照片</span><b class="num">' + sales.filter(function(s){ return s.hasPhoto; }).length + "</b></div>" +
+      '<div class="kv"><span>品項數</span><b class="num">' + cats.length + "</b></div>" +
+      '<div class="kv"><span>還沒上傳到雲端</span><b class="num">' + pendingCount() + "</b></div>" +
+      (hasDemo ? '<button type="button" class="btn danger" id="clearDemo" style="margin-top:10px">清掉示範資料</button>' : "") +
+    "</div>";
+
+  var ri = $("editName");
+  if (ri){ ri.focus(); ri.select(); }
+}
+
+function renderAll(){
+  renderTop();
+  if (view === "today") renderToday();
+  else if (view === "log") renderLog();
+  else if (view === "stats") renderStats();
+  else renderSettings();
+}
+
+/* ---------- category management ---------- */
+async function moveCat(i, dir){
+  var j = i + dir;
+  if (j < 0 || j >= cats.length) return;
+  var t = cats[i]; cats[i] = cats[j]; cats[j] = t;
+  await saveCats();
+  renderSettings();
+}
+async function doEditCat(oldName){
+  var next = String($("editName").value || "").trim();
+  var price = Math.max(0, parseInt(String($("editPrice").value).replace(/[^\d]/g, ""), 10) || 0);
+  var i = catIndex(oldName);
+  renamingCat = null;
+  if (i === -1){ renderSettings(); return; }
+  if (!next) next = oldName;
+  if (next !== oldName && catIndex(next) !== -1){ renderSettings(); toast("已經有同名的品項了"); return; }
+  cats[i] = {name:next, price:price};
+  var hit = next === oldName ? [] : sales.filter(function(s){ return s.cat === oldName; });
+  for (var k=0;k<hit.length;k++){ hit[k].cat = next; hit[k].synced = 0; await putSale(hit[k]); }
+  await saveCats();
+  renderSettings(); renderTop();
+  toast(hit.length ? "已更新，過去 " + hit.length + " 筆紀錄的品項一起改了" : "已更新");
+}
+async function deleteCat(name){
+  if (cats.length < 2) return;
+  cats = cats.filter(function(c){ return c.name !== name; });
+  await saveCats();
+  renderSettings();
+  var used = usedCount(name);
+  toast(used ? "已從按鈕列拿掉，" + used + " 筆舊紀錄保持原樣" : "已刪除");
+}
+async function addCat(name, price){
+  var v = String(name || "").trim();
+  if (!v) return false;
+  if (catIndex(v) !== -1){ toast("已經有這個品項了"); return false; }
+  cats.push({name:v, price:Math.max(0, parseInt(String(price).replace(/[^\d]/g, ""), 10) || 0)});
+  await saveCats();
+  return true;
+}
+
+/* ---------- export / import ---------- */
+function showExport(text, label){
+  var out = $("expOut");
+  out.hidden = false;
+  out.innerHTML = '<p class="note-text" style="margin:0 0 6px">' + label + "・" + kb(text.length) +
+    "：按下面的按鈕複製，或長按文字框全選複製。</p>" +
+    '<textarea id="expBox" readonly></textarea>' +
+    '<button type="button" class="btn" id="expCopy" style="margin-top:8px">複製這段文字</button>';
+  $("expBox").value = text;
+  $("expCopy").addEventListener("click", function(){
+    $("expBox").select();
+    copyText(text, "備份已複製，貼到雲端硬碟或自己的 LINE");
+  });
+}
+function ledgerJSON(){
+  return JSON.stringify({app:"stall-pos", v:1, exportedAt:new Date().toISOString(), cats:cats, sales:sales}, null, 0);
+}
+async function fullJSON(){
+  var photos = {};
+  for (var i=0;i<sales.length;i++){
+    if (!sales[i].hasPhoto) continue;
+    var u = await photoSrc(sales[i].id);
+    if (u) photos[sales[i].id] = u;
+  }
+  return JSON.stringify({app:"stall-pos", v:1, exportedAt:new Date().toISOString(), cats:cats, sales:sales, photos:photos}, null, 0);
+}
+async function runImport(){
+  var raw = String($("impBox").value || "").trim();
+  if (!raw){ toast("先貼上備份文字"); return; }
+  var data;
+  try { data = JSON.parse(raw); } catch(e){ toast("這段文字不是備份格式"); return; }
+  if (!data || data.app !== "stall-pos" || !Array.isArray(data.sales)){ toast("這段文字不是這個 App 的備份"); return; }
+  var have = {};
+  sales.forEach(function(s){ have[s.id] = true; });
+  var added = 0, pics = 0;
+  for (var i=0;i<data.sales.length;i++){
+    var s = data.sales[i];
+    if (!s || !s.id || have[s.id]) continue;
+    sales.push(s); have[s.id] = true; added++;
+    await putSale(s);
+    var u = data.photos && data.photos[s.id];
+    if (u && typeof u === "string"){ await putPhoto(s.id, u); photoMem.set(s.id, u); pics++; }
+  }
+  if (Array.isArray(data.cats)){
+    var inc = normCats(data.cats);
+    for (var j=0;j<inc.length;j++){
+      if (catIndex(inc[j].name) === -1) cats.push(inc[j]);
+    }
+    await saveCats();
+  }
+  sales.sort(function(a,b){ return a.ts - b.ts; });
+  $("impBox").value = "";
+  renderAll();
+  toast("還原了 " + added + " 筆" + (pics ? "、" + pics + " 張照片" : ""));
+}
+
+/* ---------- Google 雲端同步（Apps Script 後端） ---------- */
+function pendingCount(){ return sales.filter(function(s){ return !s.synced; }).length; }
+async function cloudCall(action, payload){
+  if (!cloud.url) throw new Error("還沒填 Apps Script 網址");
+  var res = await fetch(cloud.url, {
+    method:"POST",
+    headers:{"Content-Type":"text/plain;charset=utf-8"},   // text/plain 才不會觸發 preflight
+    body: JSON.stringify(Object.assign({action:action, token:cloud.token}, payload || {}))
+  });
+  var txt = await res.text(), out;
+  try { out = JSON.parse(txt); }
+  catch(e){ throw new Error("雲端回了看不懂的內容，確認網址是 /exec 結尾、部署權限是「任何人」"); }
+  if (!out.ok) throw new Error(out.error || "雲端拒絕了這次請求");
+  return out;
+}
+function cloudError(e){
+  var m = String((e && e.message) || e);
+  if (/failed to fetch|networkerror|load failed/i.test(m))
+    m = "連不到雲端。如果你是從 Claude 的預覽網址開這一頁，同步只能在 App 版（GitHub Pages 的網址）用。";
+  toast(m);
+}
+async function saveCloud(){
+  cloud.url = String($("cloudUrl").value || "").trim();
+  cloud.token = String($("cloudToken").value || "").trim();
+  await putMeta("cloud", cloud);
+  renderSettings();
+  toast(cloud.url && !/\/exec$/.test(cloud.url) ? "存好了，但網址通常要用 /exec 結尾" : "雲端設定已存在這支手機");
+}
+async function cloudPing(btn){
+  var label = btn.textContent;
+  btn.disabled = true; btn.textContent = "測試中…";
+  try { var out = await cloudCall("ping", {}); toast(out.msg || "連上了"); }
+  catch(e){ cloudError(e); }
+  btn.disabled = false; btn.textContent = label;
+}
+function syncRow(s){
+  return {id:s.id, ts:s.ts, cat:s.cat, amount:s.amount,
+          pay:PAYMAP[s.pay] || s.pay, payKey:s.pay, note:s.note || "", hasPhoto:!!s.hasPhoto};
+}
+async function pushAll(btn){
+  var label = btn.textContent;
+  btn.disabled = true;
+  try {
+    var pend = sales.filter(function(s){ return !s.synced; });
+    for (var i=0;i<pend.length;i+=120){
+      var chunk = pend.slice(i, i+120);
+      btn.textContent = "上傳帳目 " + Math.min(i + chunk.length, pend.length) + "/" + pend.length;
+      await cloudCall("push", {sales: chunk.map(syncRow)});
+    }
+    var pics = sales.filter(function(s){ return s.hasPhoto && !s.photoUp; });
+    for (var j=0;j<pics.length;j++){
+      btn.textContent = "上傳照片 " + (j+1) + "/" + pics.length;
+      var u = await photoSrc(pics[j].id);
+      if (!u) continue;
+      var r = await cloudCall("photo", {id:pics[j].id, dataUrl:u});
+      pics[j].photoUp = r.fileId || "1";
+      await putSale(pics[j]);
+    }
+    for (var k=0;k<pend.length;k++){ pend[k].synced = 1; await putSale(pend[k]); }
+    cloud.at = Date.now();
+    await putMeta("cloud", cloud);
+    renderSettings();
+    toast("上傳完成：帳目 " + pend.length + " 筆、照片 " + pics.length + " 張");
+  } catch(e){
+    btn.disabled = false; btn.textContent = label;
+    cloudError(e);
+  }
+}
+async function pullAll(btn){
+  var label = btn.textContent;
+  btn.disabled = true; btn.textContent = "拉取中…";
+  try {
+    var out = await cloudCall("pull", {});
+    var have = {};
+    sales.forEach(function(s){ have[s.id] = true; });
+    var inc = out.sales || [], added = 0;
+    for (var i=0;i<inc.length;i++){
+      var r = inc[i];
+      if (!r || !r.id || have[String(r.id)]) continue;
+      var s = {id:String(r.id), ts:Number(r.ts) || Date.now(), cat:String(r.cat || "其他"),
+               amount:Math.max(0, parseInt(r.amount, 10) || 0), pay:String(r.payKey || "cash"),
+               note:String(r.note || ""), hasPhoto:false, synced:1};
+      sales.push(s); have[s.id] = true; added++;
+      await putSale(s);
+    }
+    sales.sort(function(a,b){ return a.ts - b.ts; });
+    renderAll();
+    toast(added ? "拉回 " + added + " 筆（照片留在 Drive，不會下載）" : "雲端沒有這支手機缺的紀錄");
+  } catch(e){ cloudError(e); }
+  btn.disabled = false; btn.textContent = label;
+}
+
+/* ---------- copy helpers ---------- */
+function copyText(text, okMsg){
+  function fallback(){ toast("這個瀏覽器不給複製，請長按文字框全選後自己複製"); }
+  try {
+    navigator.clipboard.writeText(text).then(function(){ toast(okMsg); }, fallback);
+  } catch(e){ fallback(); }
+}
+function copyDaySummary(){
+  var k = todayKey(), list = byDay(k), t = payTotals(list);
+  var lines = [dayLabel(k) + " 結帳", "合計 " + money(sumOf(list)) + "（" + list.length + " 筆）"];
+  PAYS.forEach(function(p){ lines.push(p.n + " " + money(t[p.k]||0)); });
+  copyText(lines.join("\n"), "今日結帳已複製");
+}
+function csvText(){
+  var rows = ["日期,時間,品項,金額,收款方式,備註,有照片"];
+  sales.slice().sort(function(a,b){ return a.ts - b.ts; }).forEach(function(s){
+    rows.push([dayKey(s.ts), hhmm(s.ts), s.cat, s.amount, PAYMAP[s.pay]||s.pay,
+      '"' + String(s.note||"").replace(/"/g,'""') + '"', s.hasPhoto ? "有" : ""].join(","));
+  });
+  return rows.join("\n");
+}
+
+/* ---------- toast ---------- */
+function toast(msg, actLabel, actFn){
+  clearTimeout(undoTimer);
+  $("toastMsg").textContent = msg;
+  var b = $("toastAct");
+  if (actLabel){
+    b.hidden = false;
+    b.textContent = actLabel;
+    b.onclick = function(){ $("toast").hidden = true; if (actFn) actFn(); };
+  } else {
+    b.hidden = true; b.onclick = null;
+  }
+  $("toast").hidden = false;
+  undoTimer = setTimeout(function(){ $("toast").hidden = true; }, actLabel ? 6000 : 2600);
+}
+
+/* ---------- entry flow ---------- */
+function openSheet(){
+  var first = cats[0] || {name:"其他", price:0};
+  draft = {cat:first.name, amount:first.price ? String(first.price) : ""};
+  pendingPhoto = null;
+  resetShot();
+  $("noteInput").value = "";
+  $("step2").hidden = true;
+  $("step1").hidden = false;
+  renderCats(); renderQuick(); renderAmount();
+  $("sheet").hidden = false;
+  $("sheet").scrollTop = 0;
+}
+function closeSheet(){
+  $("sheet").hidden = true;
+  pendingPhoto = null;
+  draft = null;
+}
+function resetShot(){
+  $("shotWrap").hidden = true;
+  $("shotBtn").hidden = false;
+  $("shotImg").removeAttribute("src");
+  $("shotInput").value = "";
+}
+function renderCats(){
+  $("catChips").innerHTML = cats.map(function(c){
+    return '<button type="button" class="chip' + (draft.cat === c.name ? " on" : "") + '" data-cat="' + esc(c.name) + '">' +
+      esc(c.name) + (c.price ? " <em>" + c.price + "</em>" : "") + "</button>";
+  }).join("");
+}
+function renderQuick(){
+  var q = quickAmounts();
+  $("quickAmts").innerHTML = q.length
+    ? q.map(function(a){ return '<button type="button" data-amt="' + a + '">' + money(a) + "</button>"; }).join("")
+    : "";
+}
+function renderAmount(){
+  var v = draft.amount === "" ? 0 : parseInt(draft.amount, 10);
+  var el = $("amtVal");
+  el.textContent = v.toLocaleString("zh-TW");
+  el.classList.toggle("zero", v === 0);
+  $("next1").disabled = !(v > 0 && draft.cat);
+  $("toStep2").style.color = v > 0 ? "var(--accent)" : "var(--muted)";
+}
+function toStep2(){
+  var v = draft.amount === "" ? 0 : parseInt(draft.amount, 10);
+  if (!(v > 0 && draft.cat)) return;
+  $("recapCat").textContent = draft.cat + (pendingPhoto ? "・已拍照" : "");
+  $("recapAmt").textContent = money(v);
+  $("step1").hidden = true;
+  $("step2").hidden = false;
+  $("sheet").scrollTop = 0;
+}
+async function commit(pay){
+  var v = parseInt(draft.amount, 10);
+  var photo = pendingPhoto;
+  var s = {
+    id: uid(), ts: Date.now(), cat: draft.cat, amount: v, pay: pay,
+    note: $("noteInput").value.trim(), hasPhoto: !!photo
+  };
+  sales.push(s);
+  closeSheet();
+  view = "today"; syncNav();
+  renderAll();
+  try {
+    if (photo){ await putPhoto(s.id, photo); photoMem.set(s.id, photo); }
+    await putSale(s);
+  } catch(e){
+    showStorageWarning();
+  }
+  lastAdded = s.id;
+  toast("已記 " + s.cat + " " + money(v) + "（" + (PAYMAP[pay]||pay) + "）", "撤銷", undoLast);
+}
+async function undoLast(){
+  if (!lastAdded) return;
+  var id = lastAdded; lastAdded = null;
+  sales = sales.filter(function(s){ return s.id !== id; });
+  await delSale(id);
+  renderAll();
+  toast("已撤銷");
+}
+
+/* ---------- detail / edit ---------- */
+var detailId = null, armDelete = false;
+async function openDetail(id){
+  var s = sales.filter(function(x){ return x.id === id; })[0];
+  if (!s) return;
+  detailId = id; armDelete = false;
+  var u = s.hasPhoto ? await photoSrc(id) : null;
+  $("detailBody").innerHTML =
+    (u ? '<img class="detail-img" src="' + u + '" alt="' + esc(s.cat) + '的照片">'
+       : (s.hasPhoto ? '<div class="warn" style="margin-top:0">這一筆的照片讀不到了</div>' : "")) +
+    '<div class="card" style="margin-top:12px">' +
+      '<div class="kv"><span>金額</span><b class="num" style="font-size:19px">' + money(s.amount) + "</b></div>" +
+      '<div class="kv"><span>品項</span><b>' + esc(s.cat) + "</b></div>" +
+      '<div class="kv"><span>收款</span><b class="tag ' + s.pay + '" style="font-size:14px">' + esc(PAYMAP[s.pay]||s.pay) + "</b></div>" +
+      '<div class="kv"><span>時間</span><b>' + dayLabel(dayKey(s.ts)) + " " + hhmm(s.ts) + "</b></div>" +
+      (s.note ? '<div class="kv"><span>備註</span><b>' + esc(s.note) + "</b></div>" : "") +
+    "</div>" +
+
+    '<div class="card"><div class="eyebrow">修改</div>' +
+      '<div class="field"><label for="edAmt">金額</label>' +
+        '<input type="text" id="edAmt" inputmode="numeric" value="' + s.amount + '"></div>' +
+      '<div class="field"><label>品項</label><div class="chips" id="edCats">' +
+        cats.map(function(c){ return '<button type="button" class="chip' + (c.name===s.cat?" on":"") + '" data-ed-cat="' + esc(c.name) + '">' + esc(c.name) + "</button>"; }).join("") +
+        (catIndex(s.cat) === -1 ? '<button type="button" class="chip on" data-ed-cat="' + esc(s.cat) + '">' + esc(s.cat) + "</button>" : "") +
+      "</div></div>" +
+      '<div class="field"><label>收款方式</label><div class="chips" id="edPays">' +
+        PAYS.map(function(p){ return '<button type="button" class="chip' + (p.k===s.pay?" on":"") + '" data-ed-pay="' + p.k + '">' + p.n + "</button>"; }).join("") +
+      "</div></div>" +
+      '<div class="field"><label for="edNote">備註</label>' +
+        '<input type="text" id="edNote" maxlength="40" value="' + esc(s.note||"") + '"></div>' +
+      '<div class="field"><button type="button" class="btn primary" id="edSave">儲存修改</button>' +
+      '<button type="button" class="btn danger" id="edDel">刪除這一筆</button></div>' +
+    "</div>";
+
+  var edCat = s.cat, edPay = s.pay;
+  $("edCats").addEventListener("click", function(e){
+    var b = e.target.closest("[data-ed-cat]"); if (!b) return;
+    edCat = b.getAttribute("data-ed-cat");
+    this.querySelectorAll(".chip").forEach(function(c){ c.classList.toggle("on", c === b); });
+  });
+  $("edPays").addEventListener("click", function(e){
+    var b = e.target.closest("[data-ed-pay]"); if (!b) return;
+    edPay = b.getAttribute("data-ed-pay");
+    this.querySelectorAll(".chip").forEach(function(c){ c.classList.toggle("on", c === b); });
+  });
+  $("edSave").addEventListener("click", async function(){
+    var v = parseInt(String($("edAmt").value).replace(/[^\d]/g, ""), 10);
+    if (!(v > 0)){ toast("金額要大於 0"); return; }
+    s.amount = v; s.cat = edCat; s.pay = edPay; s.note = $("edNote").value.trim();
+    s.synced = 0;                               // 改過的要重新上傳
+
+    try { await putSale(s); } catch(e){ showStorageWarning(); }
+    closeDetail(); renderAll(); toast("已更新");
+  });
+  $("edDel").addEventListener("click", async function(){
+    if (!armDelete){ armDelete = true; this.textContent = "再按一次就真的刪掉"; return; }
+    sales = sales.filter(function(x){ return x.id !== detailId; });
+    await delSale(detailId);
+    closeDetail(); renderAll(); toast("已刪除");
+  });
+
+  $("detail").hidden = false;
+  $("detail").scrollTop = 0;
+}
+function closeDetail(){ $("detail").hidden = true; detailId = null; }
+
+/* ---------- demo data ---------- */
+async function addDemo(){
+  var base = Date.now();
+  var rows = [
+    {cat:"項鍊", amount:680, pay:"cash",    note:"示範資料"},
+    {cat:"手鍊", amount:450, pay:"linepay", note:"示範資料"},
+    {cat:"戒指", amount:320, pay:"bank",    note:"示範資料"}
+  ];
+  for (var i=0;i<rows.length;i++){
+    var s = {id:uid(), ts: base - (rows.length-i)*1800000, cat:rows[i].cat, amount:rows[i].amount,
+             pay:rows[i].pay, note:rows[i].note, hasPhoto:false, demo:true};
+    sales.push(s);
+    try { await putSale(s); } catch(e){ showStorageWarning(); }
+  }
+  renderAll();
+  toast("放了三筆示範資料，設定頁可以一鍵清掉");
+}
+async function clearDemo(){
+  var gone = sales.filter(function(s){ return s.demo; });
+  sales = sales.filter(function(s){ return !s.demo; });
+  for (var i=0;i<gone.length;i++) await delSale(gone[i].id);
+  renderAll();
+  toast("示範資料已清掉");
+}
+
+/* ---------- storage warning ---------- */
+function showStorageWarning(){
+  if ($("storeWarn")) return;
+  var w = document.createElement("div");
+  w.id = "storeWarn"; w.className = "warn";
+  w.textContent = "這台裝置不讓網頁存資料（無痕模式或封鎖了網站資料），這次記的東西關掉就會不見。請用一般視窗開啟。";
+  document.querySelector("main").prepend(w);
+}
+
+/* ---------- nav ---------- */
+function syncNav(){
+  document.querySelectorAll("#nav button").forEach(function(b){
+    b.classList.toggle("on", b.getAttribute("data-view") === view);
+  });
+  $("view-today").hidden = view !== "today";
+  $("view-log").hidden = view !== "log";
+  $("view-stats").hidden = view !== "stats";
+  $("view-set").hidden = view !== "set";
+  $("fab").hidden = view === "set";
+}
+
+/* ---------- events ---------- */
+$("nav").addEventListener("click", function(e){
+  var b = e.target.closest("button[data-view]"); if (!b) return;
+  view = b.getAttribute("data-view");
+  renamingCat = null;
+  syncNav(); renderAll();
+  window.scrollTo(0, 0);
+});
+$("fab").addEventListener("click", openSheet);
+$("cancelEntry").addEventListener("click", closeSheet);
+$("toStep2").addEventListener("click", toStep2);
+$("next1").addEventListener("click", toStep2);
+$("backStep1").addEventListener("click", function(){
+  $("step2").hidden = true; $("step1").hidden = false; $("sheet").scrollTop = 0;
+});
+$("closeDetail").addEventListener("click", closeDetail);
+$("copyDayBtn").addEventListener("click", copyDaySummary);
+
+$("shotBtn").addEventListener("click", function(){ $("shotInput").click(); });
+$("shotClear").addEventListener("click", function(){ pendingPhoto = null; resetShot(); });
+$("shotInput").addEventListener("change", async function(){
+  var f = this.files && this.files[0];
+  if (!f) return;
+  try {
+    pendingPhoto = await shrink(f);
+    $("shotImg").src = pendingPhoto;
+    $("shotWrap").hidden = false;
+    $("shotBtn").hidden = true;
+  } catch(e){
+    toast("這張圖讀不出來，換一張試試");
+  }
+});
+
+$("catChips").addEventListener("click", function(e){
+  var b = e.target.closest("[data-cat]"); if (!b) return;
+  draft.cat = b.getAttribute("data-cat");
+  var p = catPrice(draft.cat);
+  if (p) draft.amount = String(p);          // 帶入預設價，接著按鍵盤就能改成現場價
+  renderCats(); renderAmount();
+});
+
+$("pad").addEventListener("click", function(e){
+  var b = e.target.closest("button[data-k]"); if (!b) return;
+  var k = b.getAttribute("data-k");
+  if (k === "del") draft.amount = draft.amount.slice(0, -1);
+  else if (draft.amount.length < 7) draft.amount = (draft.amount + k).replace(/^0+(?=\d)/, "");
+  renderAmount();
+});
+$("quickAmts").addEventListener("click", function(e){
+  var b = e.target.closest("button[data-amt]"); if (!b) return;
+  draft.amount = b.getAttribute("data-amt");
+  renderAmount();
+});
+$("statSeg").addEventListener("click", function(e){
+  var b = e.target.closest("button[data-range]"); if (!b) return;
+  statRange = b.getAttribute("data-range");
+  this.querySelectorAll("button").forEach(function(x){ x.classList.toggle("on", x === b); });
+  renderStats();
+});
+
+/* settings is re-rendered on every change, so its controls are delegated */
+$("setBody").addEventListener("click", function(e){
+  var t = e.target.closest("button"); if (!t) return;
+  if (t.hasAttribute("data-up"))             { moveCat(+t.getAttribute("data-up"), -1); return; }
+  if (t.hasAttribute("data-down"))           { moveCat(+t.getAttribute("data-down"), 1); return; }
+  if (t.hasAttribute("data-edit"))         { renamingCat = t.getAttribute("data-edit"); renderSettings(); return; }
+  if (t.hasAttribute("data-edit-ok"))      { doEditCat(t.getAttribute("data-edit-ok")); return; }
+  if (t.hasAttribute("data-edit-cancel"))  { renamingCat = null; renderSettings(); return; }
+  if (t.hasAttribute("data-del"))          { deleteCat(t.getAttribute("data-del")); return; }
+  if (t.id === "newCatOk"){
+    addCat($("newCat").value, $("newCatPrice").value).then(function(ok){ if (ok){ renderSettings(); toast("已新增品項"); } });
+    return;
+  }
+  if (t.id === "cloudSaveBtn"){ saveCloud(); return; }
+  if (t.id === "cloudPingBtn"){ cloudPing(t); return; }
+  if (t.id === "cloudPush")   { pushAll(t); return; }
+  if (t.id === "cloudPull")   { pullAll(t); return; }
+  if (t.id === "copyCsv")    { copyText(csvText(), sales.length + " 筆明細已複製"); return; }
+  if (t.id === "expLedger")  { showExport(ledgerJSON(), "帳目備份"); return; }
+  if (t.id === "expFull")    { fullJSON().then(function(x){ showExport(x, "完整備份（含照片）"); }); return; }
+  if (t.id === "impRun")     { runImport(); return; }
+  if (t.id === "clearDemo")  { clearDemo(); return; }
+});
+$("setBody").addEventListener("keydown", function(e){
+  if (e.key !== "Enter") return;
+  if (e.target.id === "newCat" || e.target.id === "newCatPrice") $("newCatOk").click();
+  if ((e.target.id === "editName" || e.target.id === "editPrice") && renamingCat) doEditCat(renamingCat);
+});
+
+document.addEventListener("click", function(e){
+  var r = e.target.closest(".row[data-id]");
+  if (r) openDetail(r.getAttribute("data-id"));
+});
+
+$("payBtns").innerHTML = PAYS.map(function(p){
+  return '<button type="button" class="pay-btn ' + p.k + '" data-pay="' + p.k + '">' +
+    "<span>" + p.n + '</span><span class="hint">' + p.hint + "</span></button>";
+}).join("");
+$("payBtns").addEventListener("click", function(e){
+  var b = e.target.closest("button[data-pay]"); if (!b) return;
+  commit(b.getAttribute("data-pay"));
+});
+
+/* ---------- boot ---------- */
+(async function boot(){
+  syncNav();
+  renderAll();
+  try {
+    db = await openDB();
+    var saved = await req(tx("sales").getAll());
+    sales = (saved || []).sort(function(a,b){ return a.ts - b.ts; });
+    var c = await req(tx("meta").get("cats"));
+    if (Array.isArray(c) && c.length) cats = normCats(c);
+    var cl = await req(tx("meta").get("cloud"));
+    if (cl && cl.url) cloud = {url:String(cl.url), token:String(cl.token || ""), at:Number(cl.at) || 0};
+  } catch(e){
+    showStorageWarning();
+  }
+  renderAll();
+})();
+</script>
+
+<script>
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", function(){
+    navigator.serviceWorker.register("sw.js").catch(function(){});
+  });
+}
+</script>
+</body>
+</html>
