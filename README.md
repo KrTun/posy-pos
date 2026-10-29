@@ -1,9 +1,9 @@
-# 手作攤收銀
+# Posy POS
 
 擺攤用的手機收銀本。拍照 → 選品項 → 按金額 → 選收款方式，一筆三秒。
 給手做飾品攤位用：每件樣式不同、價格不一樣，所以品項有預設價，現場可以當場改。
 
-**上線網址**：https://krtun.github.io/stall-pos/
+**上線網址**：https://krtun.github.io/posy-pos/
 
 不用註冊、不用登入、不用裝 App。資料存在那支手機裡，設定好 Google 同步之後會寫進你自己的試算表。
 
@@ -82,7 +82,7 @@ App 啟動時會呼叫 `navigator.storage.persist()` 請瀏覽器別清掉這個
 git add -A; git commit -m "說明"; git push
 ```
 
-改過 `docs\sw.js` 裡的內容時，把 `CACHE` 的版本號加一（`stall-pos-v1` → `v2`），否則舊手機會繼續吃舊快取。
+改過 `docs\sw.js` 裡的內容時，把 `CACHE` 的版本號加一（`posy-pos-v1` → `v2`），否則舊手機會繼續吃舊快取。
 
 `build.ps1` 必須存成 **UTF-8 帶 BOM**。PS 5.1 會把沒有 BOM 的檔案當 ANSI 讀，裡面的中文會變亂碼（2026-10-30 踩過一次，標題變成 `???斗?`）。
 

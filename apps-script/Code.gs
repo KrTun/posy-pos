@@ -99,7 +99,10 @@ function push(list, props) {
       s.hasPhoto ? "有" : ""
     ];
     if (map[String(s.id)]) {
-      sh.getRange(map[String(s.id)], 1, 1, HEADERS.length).setValues([row]);
+      var r = map[String(s.id)];
+      var had = String(sh.getRange(r, 8).getValue() || "");
+      if (had.indexOf("http") === 0) row[7] = had;      // 別把已經寫好的 Drive 連結蓋掉
+      sh.getRange(r, 1, 1, HEADERS.length).setValues([row]);
       updated++;
     } else {
       appends.push(row);
@@ -122,6 +125,14 @@ function photo(body, props) {
   while (old.hasNext()) old.next().setTrashed(true);   // 重傳就換掉舊的
   var blob = Utilities.newBlob(Utilities.base64Decode(parts[1]), "image/jpeg", name);
   var f = folder.createFile(blob);
+
+  // 把連結寫回試算表的「照片」欄，這樣別台裝置拉回紀錄時點得開
+  try {
+    var sh = sheet(props);
+    var r = rowMap(sh)[String(body.id)];
+    if (r) sh.getRange(r, 8).setValue(f.getUrl());
+  } catch (err) { /* 寫不進去不影響照片本身已經存好 */ }
+
   return { ok: true, fileId: f.getId(), url: f.getUrl() };
 }
 
@@ -133,13 +144,15 @@ function pull(props) {
   var out = [];
   for (var i = 0; i < v.length; i++) {
     if (v[i][0] === "") continue;
+    var pic = String(v[i][7] || "");
     out.push({
       id: String(v[i][0]),
       ts: new Date(v[i][1]).getTime(),
       cat: String(v[i][2]),
       amount: Number(v[i][3]) || 0,
       note: String(v[i][5] || ""),
-      payKey: String(v[i][6] || "cash")
+      payKey: String(v[i][6] || "cash"),
+      photoUrl: pic.indexOf("http") === 0 ? pic : ""
     });
   }
   return { ok: true, sales: out };

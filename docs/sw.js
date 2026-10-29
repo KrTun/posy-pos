@@ -1,7 +1,7 @@
 /* 手作攤收銀 — 離線用的 Service Worker。
    策略：同網域的 GET 走「先連網、連不到才用快取」，所以有網路時一定拿到最新版，
    沒網路時照樣能記帳。跨網域（Google 字型、Apps Script 同步）一律直接走網路，不碰快取。 */
-var CACHE = "stall-pos-v1";
+var CACHE = "posy-pos-v2";
 var ASSETS = [
   "./",
   "./index.html",

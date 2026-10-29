@@ -20,23 +20,23 @@ $head = @'
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<meta name="theme-color" content="#0f6b5c">
+<meta name="theme-color" content="#fdeeea">
 <meta name="description" content="Mobile till for a market stall: photo, item, amount, cash / transfer / LINE Pay.">
-<title>手作攤收銀</title>
+<title>Posy POS</title>
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icon-192.png" sizes="192x192" type="image/png">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
-<meta name="apple-mobile-web-app-title" content="手作攤收銀">
+<meta name="apple-mobile-web-app-title" content="Posy POS">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=Noto+Sans+TC:wght@400;500;700&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=Noto+Sans+TC:wght@400;500;700&family=Playfair+Display:wght@500;600&display=swap">
 <style>
 /* Same reset the Artifact viewer injects, so one source file renders identically in both places. */
 :root{color-scheme:light;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
 html,body{margin:0}
-body{font:14px system-ui,-apple-system,sans-serif;background:#f1f2ef}
+body{font:14px system-ui,-apple-system,sans-serif;background:#fdeeea}
 img{max-width:100%}
 [hidden]{display:none!important}
 </style>

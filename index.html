@@ -1,32 +1,33 @@
-<title>手作攤收銀</title>
+<title>Posy POS</title>
 <meta name="claude:viewport-fit-sides" content="cover">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=Noto+Sans+TC:wght@400;500;700&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=Noto+Sans+TC:wght@400;500;700&family=Playfair+Display:wght@500;600&display=swap">
 <style>
 /* Layout: one phone-width column — sticky day total on top, fixed bottom nav, full-screen two-step entry sheet. */
 :root{
-  --bg:#f1f2ef; --surface:#ffffff; --surface-2:#e8ebe6; --line:#d7dcd5;
-  --ink:#1c2220; --muted:#6a726d; --faint:#9aa39d;
-  --accent:#0f6b5c; --accent-ink:#ffffff; --accent-soft:#dcebe6;
-  --cash:#2f7a4f; --bank:#2f5f9e; --linepay:#1f8a3b; --danger:#b3362b;
-  --shadow:0 2px 12px rgba(28,34,32,.09);
+  --bg:#fdeeea; --surface:#ffffff; --surface-2:#fbe2dc; --line:#f2cec6;
+  --ink:#2a1a18; --muted:#8a6b66; --faint:#c2a5a0;
+  --accent:#e4716a; --accent-ink:#ffffff; --accent-soft:#fcdfda;
+  --cash:#2f7a4f; --bank:#3160a4; --linepay:#1f8a3b; --danger:#b3362b;
+  --shadow:0 2px 12px rgba(120,70,64,.10);
   --ui:"Noto Sans TC",system-ui,-apple-system,"Microsoft JhengHei",sans-serif;
   --num:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+  --display:"Playfair Display",Georgia,"Songti TC",serif;
   --r:14px;
 }
 @media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
-  --bg:#141715; --surface:#1e2220; --surface-2:#282d2a; --line:#333a36;
-  --ink:#eceee9; --muted:#9aa29c; --faint:#777f79;
-  --accent:#4fbda7; --accent-ink:#0b1412; --accent-soft:#223230;
-  --cash:#5bbd84; --bank:#7fadea; --linepay:#5cc777; --danger:#e8766a;
+  --bg:#1c1412; --surface:#271d1b; --surface-2:#332624; --line:#42302d;
+  --ink:#f6e9e6; --muted:#b69a95; --faint:#7d6360;
+  --accent:#ef8a83; --accent-ink:#2a100d; --accent-soft:#3c2724;
+  --cash:#5bbd84; --bank:#86b0ec; --linepay:#5cc777; --danger:#ef8075;
   --shadow:0 2px 12px rgba(0,0,0,.45);
   color-scheme:dark;
 }}
 :root[data-theme="dark"]{
-  --bg:#141715; --surface:#1e2220; --surface-2:#282d2a; --line:#333a36;
-  --ink:#eceee9; --muted:#9aa29c; --faint:#777f79;
-  --accent:#4fbda7; --accent-ink:#0b1412; --accent-soft:#223230;
-  --cash:#5bbd84; --bank:#7fadea; --linepay:#5cc777; --danger:#e8766a;
+  --bg:#1c1412; --surface:#271d1b; --surface-2:#332624; --line:#42302d;
+  --ink:#f6e9e6; --muted:#b69a95; --faint:#7d6360;
+  --accent:#ef8a83; --accent-ink:#2a100d; --accent-soft:#3c2724;
+  --cash:#5bbd84; --bank:#86b0ec; --linepay:#5cc777; --danger:#ef8075;
   --shadow:0 2px 12px rgba(0,0,0,.45);
   color-scheme:dark;
 }
@@ -131,6 +132,11 @@ h2.sec{font-size:13px;font-weight:700;letter-spacing:.02em;color:var(--muted);ma
 .cat-row .nm em{display:block;font-style:normal;font-size:11px;color:var(--muted);font-family:var(--num)}
 .cat-row.edit{flex-wrap:wrap}
 .cat-row.edit input[type=text]{flex:1 1 7em}
+.cat-row.dragging{opacity:.9;box-shadow:0 6px 16px rgba(120,70,64,.22);background:var(--surface)}
+.mini.grip{cursor:grab;touch-action:none;color:var(--faint);font-size:15px;letter-spacing:-1px}
+.cat-row.dragging .mini.grip{cursor:grabbing}
+.wordmark{font-family:var(--display);font-size:27px;font-weight:600;line-height:1.1;margin:2px 0 14px}
+.wordmark span{color:var(--accent)}
 .chip em{font-style:normal;font-family:var(--num);font-size:12px;opacity:.7;margin-left:3px}
 .mini{border:1px solid var(--line);background:var(--surface);border-radius:8px;width:32px;height:32px;flex:none;font-size:13px;line-height:1;display:grid;place-items:center;padding:0}
 .mini:disabled{opacity:.3}
@@ -153,7 +159,7 @@ textarea{resize:vertical;min-height:90px;font-family:var(--num);font-size:11.5px
   border:0; border-radius:13px; padding:15px;
   background:var(--accent); color:var(--accent-ink);
   font-size:16.5px; font-weight:700; letter-spacing:.02em;
-  box-shadow:0 6px 18px rgba(15,107,92,.3);
+  box-shadow:0 6px 18px rgba(200,90,82,.32);
 }
 .nav{
   position:fixed; inset:auto 0 0; z-index:26;
@@ -650,11 +656,10 @@ function catRowHTML(c, i){
       '<button type="button" class="mini" data-edit-ok="' + esc(c.name) + '" aria-label="儲存">✓</button>' +
       '<button type="button" class="mini" data-edit-cancel="1" aria-label="取消">✕</button></div>';
   }
-  return '<div class="cat-row">' +
+  return '<div class="cat-row" data-name="' + esc(c.name) + '">' +
+    '<button type="button" class="mini grip" data-grip="' + i + '" aria-label="拖曳排序，或用上下方向鍵移動：' + esc(c.name) + '">⠿</button>' +
     '<span class="nm"><b>' + esc(c.name) + "</b>" +
       '<em>' + (c.price ? "預設 " + money(c.price) : "沒設預設價") + "・" + usedCount(c.name) + " 筆</em></span>" +
-    '<button type="button" class="mini" data-up="' + i + '"' + (i === 0 ? " disabled" : "") + ' aria-label="往上移">↑</button>' +
-    '<button type="button" class="mini" data-down="' + i + '"' + (i === cats.length-1 ? " disabled" : "") + ' aria-label="往下移">↓</button>' +
     '<button type="button" class="mini" data-edit="' + esc(c.name) + '" aria-label="改名或改預設價">✎</button>' +
     '<button type="button" class="mini x" data-del="' + esc(c.name) + '"' + (cats.length < 2 ? " disabled" : "") + ' aria-label="刪除">✕</button>' +
   "</div>";
@@ -662,8 +667,9 @@ function catRowHTML(c, i){
 function renderSettings(){
   var hasDemo = sales.some(function(s){ return s.demo; });
   $("setBody").innerHTML =
+    '<div class="wordmark">Posy <span>POS</span></div>' +
     '<div class="card"><div class="eyebrow">品項與預設價</div>' +
-      '<p class="note-text">預設價會在記帳時自動填進金額，現場賣別的價錢就按鍵盤改掉，不會動到預設價。留空或 0 就是不自動帶。上下箭頭調順序，常賣的放前面。✎ 改名會連過去的紀錄一起改；✕ 只是從按鈕列拿掉，記過的紀錄不會動。</p>' +
+      '<p class="note-text">預設價會在記帳時自動填進金額，現場賣別的價錢就按鍵盤改掉，不會動到預設價。留空或 0 就是不自動帶。按住左邊的 ⠿ 拖曳可以調順序，常賣的放前面。✎ 改名會連過去的紀錄一起改；✕ 只是從按鈕列拿掉，記過的紀錄不會動。</p>' +
       '<div class="cat-list" id="catList">' + cats.map(catRowHTML).join("") + "</div>" +
       '<div class="inline-add"><input type="text" id="newCat" placeholder="新品項名稱" maxlength="8">' +
       '<input type="text" id="newCatPrice" inputmode="numeric" placeholder="預設價" style="flex:0 0 5.5em">' +
@@ -724,6 +730,45 @@ function renderAll(){
   else if (view === "log") renderLog();
   else if (view === "stats") renderStats();
   else renderSettings();
+}
+
+/* ---------- 品項拖曳排序 ---------- */
+/* 拖的時候直接搬 DOM 節點、不重畫，否則手指底下的元素被換掉就收不到後續事件。 */
+var dragEl = null;
+function catDragStart(e){
+  var grip = e.target.closest("[data-grip]");
+  if (!grip || !$("catList")) return;
+  dragEl = grip.closest(".cat-row");
+  if (!dragEl) return;
+  dragEl.classList.add("dragging");
+  e.preventDefault();
+}
+function catDragMove(e){
+  if (!dragEl) return;
+  e.preventDefault();
+  var list = $("catList");
+  if (!list) { dragEl = null; return; }
+  var rows = [].slice.call(list.children).filter(function(n){ return n !== dragEl; });
+  var before = null;
+  for (var i=0;i<rows.length;i++){
+    var r = rows[i].getBoundingClientRect();
+    if (e.clientY < r.top + r.height/2){ before = rows[i]; break; }
+  }
+  if (before) list.insertBefore(dragEl, before);
+  else list.appendChild(dragEl);
+}
+async function catDragEnd(){
+  if (!dragEl) return;
+  dragEl.classList.remove("dragging");
+  dragEl = null;
+  var list = $("catList");
+  if (!list) return;
+  var order = [].slice.call(list.children).map(function(n){ return n.getAttribute("data-name"); });
+  var next = [];
+  order.forEach(function(nm){ var i = catIndex(nm); if (i !== -1) next.push(cats[i]); });
+  if (next.length === cats.length) cats = next;      // 只有完全對得起來才採用
+  await saveCats();
+  renderSettings();
 }
 
 /* ---------- category management ---------- */
@@ -904,12 +949,13 @@ async function pullAll(btn){
       var s = {id:String(r.id), ts:Number(r.ts) || Date.now(), cat:String(r.cat || "其他"),
                amount:Math.max(0, parseInt(r.amount, 10) || 0), pay:String(r.payKey || "cash"),
                note:String(r.note || ""), hasPhoto:false, synced:1};
+      if (r.photoUrl) s.photoUrl = String(r.photoUrl);   // 照片留在 Drive，這裡只帶連結
       sales.push(s); have[s.id] = true; added++;
       await putSale(s);
     }
     sales.sort(function(a,b){ return a.ts - b.ts; });
     renderAll();
-    toast(added ? "拉回 " + added + " 筆（照片留在 Drive，不會下載）" : "雲端沒有這支手機缺的紀錄");
+    toast(added ? "拉回 " + added + " 筆（照片留在 Drive，點進該筆可開連結）" : "雲端沒有這支手機缺的紀錄");
   } catch(e){ cloudError(e); }
   btn.disabled = false; btn.textContent = label;
 }
@@ -1043,7 +1089,8 @@ async function openDetail(id){
   var u = s.hasPhoto ? await photoSrc(id) : null;
   $("detailBody").innerHTML =
     (u ? '<img class="detail-img" src="' + u + '" alt="' + esc(s.cat) + '的照片">'
-       : (s.hasPhoto ? '<div class="warn" style="margin-top:0">這一筆的照片讀不到了</div>' : "")) +
+       : s.photoUrl ? '<a class="btn" href="' + esc(s.photoUrl) + '" target="_blank" rel="noopener">在 Google Drive 看這張照片</a>'
+       : s.hasPhoto ? '<div class="warn" style="margin-top:0">這一筆的照片讀不到了</div>' : "") +
     '<div class="card" style="margin-top:12px">' +
       '<div class="kv"><span>金額</span><b class="num" style="font-size:19px">' + money(s.amount) + "</b></div>" +
       '<div class="kv"><span>品項</span><b>' + esc(s.cat) + "</b></div>" +
@@ -1234,8 +1281,7 @@ $("statSeg").addEventListener("click", function(e){
 /* settings is re-rendered on every change, so its controls are delegated */
 $("setBody").addEventListener("click", function(e){
   var t = e.target.closest("button"); if (!t) return;
-  if (t.hasAttribute("data-up"))             { moveCat(+t.getAttribute("data-up"), -1); return; }
-  if (t.hasAttribute("data-down"))           { moveCat(+t.getAttribute("data-down"), 1); return; }
+  if (t.hasAttribute("data-grip"))         { return; }
   if (t.hasAttribute("data-edit"))         { renamingCat = t.getAttribute("data-edit"); renderSettings(); return; }
   if (t.hasAttribute("data-edit-ok"))      { doEditCat(t.getAttribute("data-edit-ok")); return; }
   if (t.hasAttribute("data-edit-cancel"))  { renamingCat = null; renderSettings(); return; }
@@ -1255,10 +1301,19 @@ $("setBody").addEventListener("click", function(e){
   if (t.id === "clearDemo")  { clearDemo(); return; }
 });
 $("setBody").addEventListener("keydown", function(e){
+  if (e.target.hasAttribute && e.target.hasAttribute("data-grip") && (e.key === "ArrowUp" || e.key === "ArrowDown")){
+    e.preventDefault();                               // 鍵盤也能排序
+    moveCat(+e.target.getAttribute("data-grip"), e.key === "ArrowUp" ? -1 : 1);
+    return;
+  }
   if (e.key !== "Enter") return;
   if (e.target.id === "newCat" || e.target.id === "newCatPrice") $("newCatOk").click();
   if ((e.target.id === "editName" || e.target.id === "editPrice") && renamingCat) doEditCat(renamingCat);
 });
+$("setBody").addEventListener("pointerdown", catDragStart);
+document.addEventListener("pointermove", catDragMove, {passive:false});
+document.addEventListener("pointerup", catDragEnd);
+document.addEventListener("pointercancel", catDragEnd);
 
 document.addEventListener("click", function(e){
   var r = e.target.closest(".row[data-id]");
