@@ -160,7 +160,9 @@ h2.sec{font-size:13px;font-weight:700;letter-spacing:.02em;color:var(--muted);ma
 .cat-row input[type=text]{flex:1;min-width:0;padding:7px 9px}
 .inline-add{display:flex;gap:7px;margin-top:10px}
 
-input[type=text],textarea{
+.two-up{display:flex;gap:7px}
+.two-up input{flex:1;min-width:0}
+input[type=text],input[type=date],input[type=time],textarea{
   width:100%;border:1px solid var(--line);background:var(--surface);color:var(--ink);
   border-radius:11px;padding:11px 12px;font:inherit;
 }
@@ -390,9 +392,10 @@ var PAYS = [
 ];
 var PAYMAP = {cash:"現金", bank:"匯款", linepay:"LINE Pay"};
 var CATS_DEFAULT = [
-  {name:"項鍊", price:0}, {name:"手鍊", price:0}, {name:"戒指", price:0},
-  {name:"耳環", price:0}, {name:"其他", price:0}
+  {name:"長項鍊", price:0}, {name:"短項鍊", price:0}, {name:"手鍊", price:0},
+  {name:"大花戒指", price:0}, {name:"串珠戒指", price:0}
 ];
+var CATS_V1 = ["項鍊","手鍊","戒指","耳環","其他"];   // 第一版的出廠清單，沒動過才自動換成新的
 var MAX_EDGE = 800, JPEG_Q = 0.7;
 
 /* ---------- state ---------- */
@@ -422,6 +425,17 @@ function dayLabel(key){
   return (+p[1]) + "/" + (+p[2]) + "（" + w + "）";
 }
 function todayKey(){ return dayKey(Date.now()); }
+/** 把 <input type=date> 的 YYYY-MM-DD 與 <input type=time> 的 HH:MM 合成本地時間戳。看不懂就回 null。 */
+function parseWhen(dateStr, timeStr){
+  var d = /^(\d{4})-(\d{1,2})-(\d{1,2})$/.exec(String(dateStr || "").trim());
+  var t = /^(\d{1,2}):(\d{2})/.exec(String(timeStr || "").trim());
+  if (!d || !t) return null;
+  var hh = +t[1], mm = +t[2];
+  if (hh > 23 || mm > 59) return null;
+  var dt = new Date(+d[1], +d[2] - 1, +d[3], hh, mm, 0, 0);
+  if (isNaN(dt.getTime()) || dt.getMonth() !== +d[2] - 1) return null;   // 擋掉 2/31 這種
+  return dt.getTime();
+}
 function uid(){ return Date.now().toString(36) + Math.random().toString(36).slice(2,7); }
 function esc(s){ return String(s).replace(/[&<>"']/g, function(c){ return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]; }); }
 function kb(n){ return n > 1024*1024 ? (n/1024/1024).toFixed(1) + " MB" : Math.round(n/1024) + " KB"; }
@@ -1125,6 +1139,9 @@ async function openDetail(id){
       '<div class="field"><label>收款方式</label><div class="chips" id="edPays">' +
         PAYS.map(function(p){ return '<button type="button" class="chip' + (p.k===s.pay?" on":"") + '" data-ed-pay="' + p.k + '">' + p.n + "</button>"; }).join("") +
       "</div></div>" +
+      '<div class="field"><label for="edDate">日期與時間</label>' +
+        '<div class="two-up"><input type="date" id="edDate" value="' + dayKey(s.ts) + '">' +
+        '<input type="time" id="edTime" value="' + hhmm(s.ts) + '"></div></div>' +
       '<div class="field"><label for="edNote">備註</label>' +
         '<input type="text" id="edNote" maxlength="40" value="' + esc(s.note||"") + '"></div>' +
       '<div class="field"><button type="button" class="btn primary" id="edSave">儲存修改</button>' +
@@ -1145,8 +1162,12 @@ async function openDetail(id){
   $("edSave").addEventListener("click", async function(){
     var v = parseInt(String($("edAmt").value).replace(/[^\d]/g, ""), 10);
     if (!(v > 0)){ toast("金額要大於 0"); return; }
+    var when = parseWhen($("edDate").value, $("edTime").value);
+    if (when === null){ toast("日期或時間填得不完整，請重選"); return; }
     s.amount = v; s.cat = edCat; s.pay = edPay; s.note = $("edNote").value.trim();
+    s.ts = when;
     s.synced = 0;                               // 改過的要重新上傳
+    sales.sort(function(a,b){ return a.ts - b.ts; });
 
     try { await putSale(s); } catch(e){ showStorageWarning(); }
     closeDetail(); renderAll(); toast("已更新");
@@ -1354,7 +1375,15 @@ $("payBtns").addEventListener("click", function(e){
     var saved = await req(tx("sales").getAll());
     sales = (saved || []).sort(function(a,b){ return a.ts - b.ts; });
     var c = await req(tx("meta").get("cats"));
-    if (Array.isArray(c) && c.length) cats = normCats(c);
+    if (Array.isArray(c) && c.length){
+      var saved = normCats(c);
+      // 還是第一版的出廠清單就換成新的；只要使用者自己動過就原封不動
+      var untouched = saved.length === CATS_V1.length && saved.every(function(x, i){
+        return x.name === CATS_V1[i] && !x.price;
+      });
+      cats = untouched ? CATS_DEFAULT.map(function(x){ return {name:x.name, price:x.price}; }) : saved;
+      if (untouched) await saveCats();
+    }
     var cl = await req(tx("meta").get("cloud"));
     if (cl && cl.url) cloud = {url:String(cl.url), token:String(cl.token || ""), at:Number(cl.at) || 0};
   } catch(e){
