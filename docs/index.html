@@ -1513,7 +1513,9 @@ $("catChips").addEventListener("click", function(e){
   var b = e.target.closest("[data-cat]"); if (!b) return;
   draft.cat = b.getAttribute("data-cat");
   var p = catPrice(draft.cat);
-  if (p) draft.amount = String(p);          // 帶入預設價，接著按鍵盤就能改成現場價
+  // 有預設價就帶入，接著按鍵盤能改成現場價；沒設價的就清空，
+  // 不然上一個品項的金額會留在框裡，再按數字變成接在後面（650 → 650420）。
+  draft.amount = p ? String(p) : "";
   renderCats(); renderAmount();
 });
 
