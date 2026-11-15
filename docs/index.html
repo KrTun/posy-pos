@@ -91,7 +91,9 @@ h2.sec{font-size:13px;font-weight:700;letter-spacing:.02em;color:var(--muted);ma
 .thumb.empty{display:grid;place-items:center;color:var(--faint);font-size:17px}
 .thumb.lost{color:var(--danger);font-size:15px}
 .row .mid{flex:1;min-width:0}
-.row .cat{font-weight:500}
+.row .cat{display:block;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.thumb.sm{width:38px;height:38px;border-radius:8px;font-size:14px}
+.thumb.n{background:var(--accent-soft);color:var(--accent);font-weight:700;font-size:15px;font-family:var(--num)}
 .row .meta{font-size:12px;color:var(--muted);display:flex;gap:6px;align-items:center;flex-wrap:wrap}
 .dot{width:5px;height:5px;border-radius:50%;background:currentColor;flex:none;opacity:.4}
 .row .amt{font-family:var(--num);font-variant-numeric:tabular-nums;font-weight:600;font-size:17px;flex:none}
@@ -342,8 +344,16 @@ textarea{resize:vertical;min-height:90px;font-family:var(--num);font-size:11.5px
         </div>
       </div>
 
+      <div class="field" id="cartField" hidden>
+        <label>這筆訂單已經加了 <span id="cartCount">0</span> 件</label>
+        <div class="cat-list" id="cartList"></div>
+        <div class="recap" style="margin-top:9px"><span class="l">小計</span><span class="r num" id="cartSub">NT$0</span></div>
+      </div>
+
       <div class="field">
+        <button type="button" class="btn" id="addMore" disabled>＋ 繼續新增</button>
         <button type="button" class="btn primary" id="next1" disabled>下一步：收款方式</button>
+        <p class="note-text">同一個客人買好幾件就按「繼續新增」，把這幾件加成一張訂單、最後只收一次款。只買一件就直接按下一步。按完「繼續新增」金額會清空，同一款再賣一件就再點一次那個品項帶價。</p>
       </div>
     </div>
 
@@ -358,6 +368,7 @@ textarea{resize:vertical;min-height:90px;font-family:var(--num);font-size:11.5px
         <span class="l" id="recapCat">—</span>
         <span class="r num" id="recapAmt">NT$0</span>
       </div>
+      <div class="cat-list" id="recapList" hidden style="margin-top:9px"></div>
 
       <div class="field">
         <label for="noteInput">備註（選填，例如賣給誰）</label>
@@ -401,13 +412,15 @@ var CATS_V1 = ["項鍊","手鍊","戒指","耳環","其他"];   // 第一版的�
 var MAX_EDGE = 800, JPEG_Q = 0.7;
 
 /* ---------- state ---------- */
-var sales = [];           // {id, ts, cat, amount, pay, note, hasPhoto, demo}
+/* 一列 = 賣掉的一件。同一個客人一次買幾件，就是幾列共用同一個 oid（訂單編號）；
+   沒有 oid 的是改版前記的紀錄，一列就自己是一張單。 */
+var sales = [];           // {id, oid, ts, cat, amount, pay, note, hasPhoto, demo}
 var cats = CATS_DEFAULT.map(function(c){ return {name:c.name, price:c.price}; });  // price 0 = 不自動帶價
 var db = null;
 var photoMem = new Map();  // id -> data URL
 var view = "today", statRange = "month";
-var draft = null, pendingPhoto = null;
-var undoTimer = null, lastAdded = null;
+var draft = null, pendingPhoto = null;   // draft.cart = 這張單已經加好的幾件，另外一件還在輸入中
+var undoTimer = null, lastAdded = null;  // lastAdded = 最後記那張單的全部 id
 var renamingCat = null;
 var cloud = {url:"", token:"", at:0};   // 這支手機的雲端設定，不進程式碼
 var storageMode = "";                   // persisted | best-effort | ""（瀏覽器不支援）
@@ -522,6 +535,26 @@ function payTotals(list){
   return o;
 }
 function usedCount(cat){ return sales.filter(function(s){ return s.cat === cat; }).length; }
+/* 舊紀錄沒有 oid，就用它自己的 id 當訂單編號——等於一張單一件，不用搬資料。 */
+function orderKey(s){ return s.oid || s.id; }
+/** 把紀錄捲成訂單：[{key, ts, pay, note, items:[…], total}]，新的在前。 */
+function ordersOf(list){
+  var map = {}, out = [];
+  list.forEach(function(s){
+    var k = orderKey(s), o = map[k];
+    if (!o){ o = map[k] = {key:k, ts:s.ts, pay:s.pay, note:s.note || "", items:[], total:0}; out.push(o); }
+    o.items.push(s);
+    o.total += s.amount;
+    if (s.ts < o.ts){ o.ts = s.ts; o.pay = s.pay; }   // 整張單的時間與收款方式看最早那一件
+    if (!o.note && s.note) o.note = s.note;
+  });
+  out.forEach(function(o){ o.items.sort(function(a,b){ return a.ts - b.ts; }); });
+  out.sort(function(a,b){ return b.ts - a.ts; });
+  return out;
+}
+function itemsOfOrder(key){
+  return sales.filter(function(s){ return orderKey(s) === key; }).sort(function(a,b){ return a.ts - b.ts; });
+}
 function normCats(v){
   var out = [];
   (v || []).forEach(function(c){
@@ -548,7 +581,10 @@ function renderTop(){
   var list = byDay(todayKey());
   $("todayLabel").textContent = dayLabel(todayKey()) + " 今日營收";
   $("todayTotal").textContent = money(sumOf(list));
-  $("todayCount").textContent = list.length + " 筆";
+  var ord = ordersOf(list);
+  $("todayCount").textContent = ord.length === list.length
+    ? list.length + " 筆"
+    : ord.length + " 單・" + list.length + " 件";
   var t = payTotals(list);
   $("todayPays").innerHTML = PAYS.map(function(p){
     return '<div class="cell ' + p.k + '"><span>' + p.n + '</span><b>' + money(t[p.k]||0) + "</b></div>";
@@ -556,17 +592,24 @@ function renderTop(){
 }
 
 /* ---------- rendering: rows ---------- */
-function rowHTML(s){
-  return '<button type="button" class="row" data-id="' + s.id + '">' +
-    (s.hasPhoto
-      ? '<img class="thumb" data-photo="' + s.id + '" alt="' + esc(s.cat) + '的照片">'
-      : '<span class="thumb empty" aria-hidden="true">◇</span>') +
-    '<span class="mid"><span class="cat">' + esc(s.cat) + '</span>' +
-      '<span class="meta"><span class="tag ' + s.pay + '">' + esc(PAYMAP[s.pay] || s.pay) + "</span>" +
-      '<span class="dot"></span>' + hhmm(s.ts) +
-      (s.note ? '<span class="dot"></span>' + esc(s.note) : "") +
+/** 一列 = 一張訂單。多件的縮圖用第一張有照片的，沒照片就顯示件數。 */
+function rowHTML(o){
+  var n = o.items.length, pic = "";
+  for (var i=0;i<n;i++) if (o.items[i].hasPhoto){ pic = o.items[i].id; break; }
+  var title = o.items.map(function(x){ return x.cat; }).join("、");
+  return '<button type="button" class="row" data-order="' + esc(o.key) + '">' +
+    (pic
+      ? '<img class="thumb" data-photo="' + pic + '" alt="' + esc(o.items[0].cat) + '的照片">'
+      : n > 1
+        ? '<span class="thumb empty n" aria-hidden="true">' + n + "</span>"
+        : '<span class="thumb empty" aria-hidden="true">◇</span>') +
+    '<span class="mid"><span class="cat">' + esc(title) + '</span>' +
+      '<span class="meta"><span class="tag ' + o.pay + '">' + esc(PAYMAP[o.pay] || o.pay) + "</span>" +
+      '<span class="dot"></span>' + hhmm(o.ts) +
+      (n > 1 ? '<span class="dot"></span>' + n + " 件" : "") +
+      (o.note ? '<span class="dot"></span>' + esc(o.note) : "") +
     "</span></span>" +
-    '<span class="amt">' + money(s.amount) + "</span></button>";
+    '<span class="amt">' + money(o.total) + "</span></button>";
 }
 async function hydrateThumbs(root){
   var imgs = root.querySelectorAll("img[data-photo]");
@@ -579,7 +622,7 @@ async function hydrateThumbs(root){
 }
 
 function renderToday(){
-  var list = byDay(todayKey()).slice().sort(function(a,b){ return b.ts - a.ts; });
+  var list = ordersOf(byDay(todayKey()));
   var el = $("todayList");
   $("copyDayBtn").hidden = !list.length;
   if (!list.length){
@@ -606,10 +649,11 @@ function renderLog(){
   sales.forEach(function(s){ var k = dayKey(s.ts); (groups[k] = groups[k] || []).push(s); });
   var keys = Object.keys(groups).sort().reverse();
   el.innerHTML = keys.map(function(k){
-    var g = groups[k].slice().sort(function(a,b){ return b.ts - a.ts; });
+    var g = groups[k], ord = ordersOf(g);
     return '<div class="day-head"><span class="d">' + dayLabel(k) + "</span>" +
-      '<span class="s">' + g.length + " 筆・" + money(sumOf(g)) + "</span></div>" +
-      '<div class="list">' + g.map(rowHTML).join("") + "</div>";
+      '<span class="s">' + (ord.length === g.length ? g.length + " 筆" : ord.length + " 單・" + g.length + " 件") +
+      "・" + money(sumOf(g)) + "</span></div>" +
+      '<div class="list">' + ord.map(rowHTML).join("") + "</div>";
   }).join("");
   hydrateThumbs(el);
 }
@@ -618,7 +662,7 @@ function renderStats(){
   var list = statRange === "month"
     ? sales.filter(function(s){ return monthKey(s.ts) === monthKey(Date.now()); })
     : sales.slice();
-  var total = sumOf(list), n = list.length;
+  var total = sumOf(list), n = list.length, orders = ordersOf(list);
   var el = $("statBody");
   if (!n){
     el.innerHTML = '<div class="empty-state" style="margin-top:12px"><p class="big">這段期間還沒有紀錄</p><p>記幾筆之後，這裡會算出品項和收款方式的佔比。</p></div>';
@@ -648,8 +692,12 @@ function renderStats(){
   el.innerHTML =
     '<div class="tiles" style="margin-top:12px">' +
       '<div class="tile"><b>' + money(total) + "</b><span>營收</span></div>" +
-      '<div class="tile"><b>' + n + "</b><span>筆數</span></div>" +
-      '<div class="tile"><b>' + money(total/n) + "</b><span>平均單價</span></div>" +
+      '<div class="tile"><b>' + orders.length + "</b><span>訂單</span></div>" +
+      '<div class="tile"><b>' + n + "</b><span>件數</span></div>" +
+    "</div>" +
+    '<div class="tiles" style="grid-template-columns:repeat(2,1fr);margin-top:8px">' +
+      '<div class="tile"><b>' + money(total/orders.length) + "</b><span>平均客單價（每張單）</span></div>" +
+      '<div class="tile"><b>' + money(total/n) + "</b><span>平均單品價（每件）</span></div>" +
     "</div>" +
 
     '<div class="card" style="margin-top:10px"><div class="eyebrow">收款方式</div><div class="bars" style="margin-top:10px">' +
@@ -720,13 +768,14 @@ function renderSettings(){
 
     '<div class="card"><div class="eyebrow">Google 雲端同步</div>' +
       '<p class="note-text">設定一次之後，按「上傳」就會把帳目寫進你的 Google 試算表、照片存到 Drive 資料夾。網址和金鑰只存在這支手機，不會寫進程式碼。設定步驟看專案裡的 README。</p>' +
+      '<p class="note-text">同一張訂單的幾件會帶同一個訂單編號。要在試算表看到「訂單編號」那一欄，後端的 Code.gs 更新後要重新部署一次（部署 → 管理部署作業 → 編輯 → 新版本），網址和金鑰都不會變；不重新部署也不會壞，只是表上看不出哪幾列是同一張單。</p>' +
       '<div class="field"><label for="cloudUrl">Apps Script 網址（／exec 結尾）</label>' +
         '<input type="text" id="cloudUrl" value="' + esc(cloud.url) + '" placeholder="https://script.google.com/macros/s/…/exec"></div>' +
       '<div class="field"><label for="cloudToken">金鑰</label>' +
         '<input type="text" id="cloudToken" value="' + esc(cloud.token) + '" placeholder="跟 Apps Script 的 TOKEN 一樣"></div>' +
       '<button type="button" class="btn" id="cloudSaveBtn" style="margin-top:10px">儲存雲端設定</button>' +
       '<button type="button" class="btn" id="cloudPingBtn"' + (cloud.url ? "" : " disabled") + ">測試連線</button>" +
-      '<button type="button" class="btn primary" id="cloudPush"' + (cloud.url ? "" : " disabled") + ">上傳到 Google（" + pendingCount() + " 筆待傳）</button>" +
+      '<button type="button" class="btn primary" id="cloudPush"' + (cloud.url ? "" : " disabled") + ">上傳到 Google（" + pendingCount() + " 件待傳）</button>" +
       '<button type="button" class="btn" id="cloudPull"' + (cloud.url ? "" : " disabled") + ">從 Google 拉回合併</button>" +
       '<p class="note-text">' + (cloud.at ? "上次同步：" + new Date(cloud.at).toLocaleString("zh-TW") : "還沒同步過") + "</p>" +
     "</div>" +
@@ -738,7 +787,8 @@ function renderSettings(){
     "</div>" +
 
     '<div class="card"><div class="eyebrow">資料</div>' +
-      '<div class="kv"><span>總筆數</span><b class="num">' + sales.length + "</b></div>" +
+      '<div class="kv"><span>總訂單</span><b class="num">' + ordersOf(sales).length + "</b></div>" +
+      '<div class="kv"><span>總件數</span><b class="num">' + sales.length + "</b></div>" +
       '<div class="kv"><span>有照片</span><b class="num">' + sales.filter(function(s){ return s.hasPhoto; }).length + "</b></div>" +
       '<div class="kv"><span>品項數</span><b class="num">' + cats.length + "</b></div>" +
       '<div class="kv"><span>還沒上傳到雲端</span><b class="num">' + pendingCount() + "</b></div>" +
@@ -937,7 +987,7 @@ async function cloudPing(btn){
   btn.disabled = false; btn.textContent = label;
 }
 function syncRow(s){
-  return {id:s.id, ts:s.ts, cat:s.cat, amount:s.amount,
+  return {id:s.id, oid:orderKey(s), ts:s.ts, cat:s.cat, amount:s.amount,
           pay:PAYMAP[s.pay] || s.pay, payKey:s.pay, note:s.note || "", hasPhoto:!!s.hasPhoto};
 }
 async function pushAll(btn){
@@ -980,7 +1030,8 @@ async function pullAll(btn){
     for (var i=0;i<inc.length;i++){
       var r = inc[i];
       if (!r || !r.id || have[String(r.id)]) continue;
-      var s = {id:String(r.id), ts:Number(r.ts) || Date.now(), cat:String(r.cat || "其他"),
+      var s = {id:String(r.id), oid:String(r.oid || r.id), ts:Number(r.ts) || Date.now(),
+               cat:String(r.cat || "其他"),
                amount:Math.max(0, parseInt(r.amount, 10) || 0), pay:String(r.payKey || "cash"),
                note:String(r.note || ""), hasPhoto:false, synced:1};
       if (r.photoUrl) s.photoUrl = String(r.photoUrl);   // 照片留在 Drive，這裡只帶連結
@@ -1002,16 +1053,18 @@ function copyText(text, okMsg){
   } catch(e){ fallback(); }
 }
 function copyDaySummary(){
-  var k = todayKey(), list = byDay(k), t = payTotals(list);
-  var lines = [dayLabel(k) + " 結帳", "合計 " + money(sumOf(list)) + "（" + list.length + " 筆）"];
+  var k = todayKey(), list = byDay(k), t = payTotals(list), ord = ordersOf(list);
+  var lines = [dayLabel(k) + " 結帳",
+    "合計 " + money(sumOf(list)) + "（" + ord.length + " 單・" + list.length + " 件）"];
   PAYS.forEach(function(p){ lines.push(p.n + " " + money(t[p.k]||0)); });
   copyText(lines.join("\n"), "今日結帳已複製");
 }
+function q(v){ return '"' + String(v == null ? "" : v).replace(/"/g, '""') + '"'; }
 function csvText(){
-  var rows = ["日期,時間,品項,金額,收款方式,備註,有照片"];
+  var rows = ["日期,時間,訂單編號,品項,金額,收款方式,備註,有照片"];
   sales.slice().sort(function(a,b){ return a.ts - b.ts; }).forEach(function(s){
-    rows.push([dayKey(s.ts), hhmm(s.ts), s.cat, s.amount, PAYMAP[s.pay]||s.pay,
-      '"' + String(s.note||"").replace(/"/g,'""') + '"', s.hasPhoto ? "有" : ""].join(","));
+    rows.push([dayKey(s.ts), hhmm(s.ts), orderKey(s), q(s.cat), s.amount,
+      PAYMAP[s.pay]||s.pay, q(s.note), s.hasPhoto ? "有" : ""].join(","));
   });
   return rows.join("\n");
 }
@@ -1033,15 +1086,24 @@ function toast(msg, actLabel, actFn){
 }
 
 /* ---------- entry flow ---------- */
-function openSheet(){
-  var first = cats[0] || {name:"其他", price:0};
-  draft = {cat:first.name, amount:first.price ? String(first.price) : ""};
+/** 把輸入中的那一件清空。keepCat 有值就停在同一個品項（同客人常常連買同款）。
+    blank＝加入一件之後的清空：金額要留空，不要再自動帶預設價，
+    否則她按完「繼續新增」直接按下一步，會把同一款多算一件。 */
+function freshLine(keepCat, blank){
+  var i = keepCat ? catIndex(keepCat) : -1;
+  var c = i !== -1 ? cats[i] : (cats[0] || {name:"其他", price:0});
+  draft.cat = c.name;
+  draft.amount = (!blank && c.price) ? String(c.price) : "";
   pendingPhoto = null;
   resetShot();
+}
+function openSheet(){
+  draft = {cart:[], cat:"", amount:""};
+  freshLine(null);
   $("noteInput").value = "";
   $("step2").hidden = true;
   $("step1").hidden = false;
-  renderCats(); renderQuick(); renderAmount();
+  renderCats(); renderQuick(); renderCart(); renderAmount();
   $("sheet").hidden = false;
   $("sheet").scrollTop = 0;
 }
@@ -1068,92 +1130,198 @@ function renderQuick(){
     ? q.map(function(a){ return '<button type="button" data-amt="' + a + '">' + money(a) + "</button>"; }).join("")
     : "";
 }
+function curAmount(){ return draft.amount === "" ? 0 : (parseInt(draft.amount, 10) || 0); }
+/** 這張單目前的全部件數：已加入的，加上還在輸入中、金額已經有數字的那一件。 */
+function draftLines(){
+  var out = draft.cart.slice();
+  var v = curAmount();
+  if (v > 0 && draft.cat) out.push({cat:draft.cat, amount:v, photo:pendingPhoto});
+  return out;
+}
+function lineSum(lines){ var t = 0; lines.forEach(function(l){ t += l.amount; }); return t; }
+function lineRowHTML(l, i, delAttr){
+  return '<div class="cat-row">' +
+    (l.photo ? '<img class="thumb sm" src="' + l.photo + '" alt="">' : '<span class="thumb empty sm" aria-hidden="true">◇</span>') +
+    '<span class="nm"><b>' + esc(l.cat) + "</b><em>" + money(l.amount) + "</em></span>" +
+    (delAttr ? '<button type="button" class="mini x" data-cart-del="' + i + '" aria-label="從這筆訂單移除">✕</button>' : "") +
+  "</div>";
+}
+function renderCart(){
+  var n = draft.cart.length;
+  $("cartField").hidden = !n;
+  if (!n) return;
+  $("cartCount").textContent = n;
+  $("cartList").innerHTML = draft.cart.map(function(l, i){ return lineRowHTML(l, i, true); }).join("");
+  $("cartSub").textContent = money(lineSum(draft.cart));
+}
 function renderAmount(){
-  var v = draft.amount === "" ? 0 : parseInt(draft.amount, 10);
+  var v = curAmount();
   var el = $("amtVal");
   el.textContent = v.toLocaleString("zh-TW");
   el.classList.toggle("zero", v === 0);
-  $("next1").disabled = !(v > 0 && draft.cat);
-  $("toStep2").style.color = v > 0 ? "var(--accent)" : "var(--muted)";
+  var lines = draftLines();
+  $("addMore").disabled = !(v > 0 && draft.cat);
+  $("next1").disabled = !lines.length;
+  $("next1").textContent = lines.length > 1
+    ? "下一步：收款方式（" + lines.length + " 件 " + money(lineSum(lines)) + "）"
+    : "下一步：收款方式";
+  $("toStep2").style.color = lines.length ? "var(--accent)" : "var(--muted)";
+}
+/** 把輸入中的那一件收進這張單，接著記下一件。 */
+function addLine(){
+  var v = curAmount();
+  if (!(v > 0 && draft.cat)) return;
+  var nm = draft.cat;
+  draft.cart.push({cat:nm, amount:v, photo:pendingPhoto});
+  freshLine(nm, true);
+  renderCats(); renderCart(); renderAmount();
+  $("sheet").scrollTop = 0;
+  toast("加入 " + nm + " " + money(v) + "，這張單共 " + draft.cart.length + " 件");
 }
 function toStep2(){
-  var v = draft.amount === "" ? 0 : parseInt(draft.amount, 10);
-  if (!(v > 0 && draft.cat)) return;
-  $("recapCat").textContent = draft.cat + (pendingPhoto ? "・已拍照" : "");
-  $("recapAmt").textContent = money(v);
+  var lines = draftLines();
+  if (!lines.length) return;
+  $("recapCat").textContent = lines.length > 1
+    ? lines.length + " 件"
+    : lines[0].cat + (lines[0].photo ? "・已拍照" : "");
+  $("recapAmt").textContent = money(lineSum(lines));
+  var rl = $("recapList");
+  rl.hidden = lines.length < 2;
+  rl.innerHTML = lines.length < 2 ? "" : lines.map(function(l, i){ return lineRowHTML(l, i, false); }).join("");
   $("step1").hidden = true;
   $("step2").hidden = false;
   $("sheet").scrollTop = 0;
 }
 async function commit(pay){
-  var v = parseInt(draft.amount, 10);
-  var photo = pendingPhoto;
-  var s = {
-    id: uid(), ts: Date.now(), cat: draft.cat, amount: v, pay: pay,
-    note: $("noteInput").value.trim(), hasPhoto: !!photo
-  };
-  sales.push(s);
+  var lines = draftLines();
+  if (!lines.length) return;
+  var note = $("noteInput").value.trim();
+  var now = Date.now(), oid = uid(), total = lineSum(lines);
+  // 同一張單共用 oid；ts 差 1 毫秒只是讓件的順序穩定，顯示上同分同秒
+  var rows = lines.map(function(l, i){
+    return {id: uid(), oid: oid, ts: now + i, cat: l.cat, amount: l.amount,
+            pay: pay, note: note, hasPhoto: !!l.photo};
+  });
+  // 照片要先進記憶體再重畫，不然列表的縮圖會比 putPhoto 早一步去資料庫找，找不到就畫成「照片存不見了」
+  rows.forEach(function(r, i){
+    sales.push(r);
+    if (lines[i].photo) photoMem.set(r.id, lines[i].photo);
+  });
   closeSheet();
   view = "today"; syncNav();
   renderAll();
   try {
-    if (photo){ await putPhoto(s.id, photo); photoMem.set(s.id, photo); }
-    await putSale(s);
+    for (var i=0;i<rows.length;i++){
+      if (lines[i].photo) await putPhoto(rows[i].id, lines[i].photo);
+      await putSale(rows[i]);
+    }
   } catch(e){
     showStorageWarning();
   }
-  lastAdded = s.id;
-  toast("已記 " + s.cat + " " + money(v) + "（" + (PAYMAP[pay]||pay) + "）", "撤銷", undoLast);
+  lastAdded = rows.map(function(r){ return r.id; });
+  toast("已記 " + (rows.length > 1 ? rows.length + " 件" : rows[0].cat) + " " + money(total) +
+        "（" + (PAYMAP[pay]||pay) + "）", "撤銷", undoLast);
 }
 async function undoLast(){
-  if (!lastAdded) return;
-  var id = lastAdded; lastAdded = null;
-  sales = sales.filter(function(s){ return s.id !== id; });
-  await delSale(id);
+  if (!lastAdded || !lastAdded.length) return;
+  var ids = lastAdded; lastAdded = null;
+  var gone = {};
+  ids.forEach(function(i){ gone[i] = 1; });
+  sales = sales.filter(function(s){ return !gone[s.id]; });
+  for (var i=0;i<ids.length;i++) await delSale(ids[i]);
   renderAll();
   toast("已撤銷");
 }
 
 /* ---------- detail / edit ---------- */
-var detailId = null, armDelete = false;
-async function openDetail(id){
-  var s = sales.filter(function(x){ return x.id === id; })[0];
-  if (!s) return;
-  detailId = id; armDelete = false;
-  var u = s.hasPhoto ? await photoSrc(id) : null;
-  $("detailBody").innerHTML =
-    (u ? '<img class="detail-img" src="' + u + '" alt="' + esc(s.cat) + '的照片">'
-       : s.photoUrl ? '<a class="btn" href="' + esc(s.photoUrl) + '" target="_blank" rel="noopener">在 Google Drive 看這張照片</a>'
-       : s.hasPhoto ? '<div class="warn" style="margin-top:0">這一筆的照片讀不到了</div>' : "") +
+/* 明細頁處理的是「一張訂單」。單件訂單維持原本的樣子（直接改金額與品項）；
+   多件的多一張「訂單內容」卡，每件可以單獨改，收款／時間／備註則套用到整張單。 */
+var detailKey = null, armDelete = false, editLine = null, editLineCat = "";
+
+function catChipsHTML(sel, attr){
+  var html = cats.map(function(c){
+    return '<button type="button" class="chip' + (c.name === sel ? " on" : "") + '" ' + attr + '="' + esc(c.name) + '">' + esc(c.name) + "</button>";
+  }).join("");
+  if (sel && catIndex(sel) === -1)   // 品項被刪掉的舊紀錄，照樣讓它顯示
+    html += '<button type="button" class="chip on" ' + attr + '="' + esc(sel) + '">' + esc(sel) + "</button>";
+  return html;
+}
+function itemsCardHTML(items, picMap){
+  return '<div class="card"><div class="eyebrow">訂單內容（' + items.length + " 件）</div>" +
+    '<p class="note-text">✎ 單獨改這一件的品項和金額；✕ 把這一件從訂單移除。只剩一件時不能移除，請用下面的「刪除整張訂單」。</p>' +
+    '<div class="cat-list">' + items.map(function(x){
+      if (editLine === x.id){
+        return '<div class="cat-row edit">' +
+          '<input type="text" id="lineAmt" inputmode="numeric" value="' + x.amount + '" aria-label="金額">' +
+          '<button type="button" class="mini" data-line-ok="' + x.id + '" aria-label="儲存">✓</button>' +
+          '<button type="button" class="mini" data-line-cancel="1" aria-label="取消">✕</button>' +
+          '<div class="chips" id="lineCats" style="flex:1 1 100%">' + catChipsHTML(editLineCat, "data-line-cat") + "</div>" +
+        "</div>";
+      }
+      return '<div class="cat-row">' +
+        (picMap[x.id] ? '<img class="thumb sm" src="' + picMap[x.id] + '" alt="">'
+                      : '<span class="thumb empty sm" aria-hidden="true">◇</span>') +
+        '<span class="nm"><b>' + esc(x.cat) + "</b><em>" + money(x.amount) + "</em></span>" +
+        '<button type="button" class="mini" data-line="' + x.id + '" aria-label="改這一件">✎</button>' +
+        '<button type="button" class="mini x" data-line-del="' + x.id + '"' + (items.length < 2 ? " disabled" : "") + ' aria-label="從訂單移除這一件">✕</button>' +
+      "</div>";
+    }).join("") + "</div></div>";
+}
+
+async function openDetail(key, keepScroll){
+  var items = itemsOfOrder(key);
+  if (!items.length){ closeDetail(); return; }
+  detailKey = key; armDelete = false;
+  var multi = items.length > 1, head = items[0];
+  var total = 0, note = "";
+  items.forEach(function(x){ total += x.amount; if (!note && x.note) note = x.note; });
+
+  var picMap = {};
+  for (var i=0;i<items.length;i++){
+    if (!items[i].hasPhoto) continue;
+    var u = await photoSrc(items[i].id);
+    if (u) picMap[items[i].id] = u;
+  }
+
+  var pic = "";
+  if (!multi){
+    pic = picMap[head.id] ? '<img class="detail-img" src="' + picMap[head.id] + '" alt="' + esc(head.cat) + '的照片">'
+        : head.photoUrl ? '<a class="btn" href="' + esc(head.photoUrl) + '" target="_blank" rel="noopener">在 Google Drive 看這張照片</a>'
+        : head.hasPhoto ? '<div class="warn" style="margin-top:0">這一筆的照片讀不到了</div>' : "";
+  }
+
+  $("detailBody").innerHTML = pic +
     '<div class="card" style="margin-top:12px">' +
-      '<div class="kv"><span>金額</span><b class="num" style="font-size:19px">' + money(s.amount) + "</b></div>" +
-      '<div class="kv"><span>品項</span><b>' + esc(s.cat) + "</b></div>" +
-      '<div class="kv"><span>收款</span><b class="tag ' + s.pay + '" style="font-size:14px">' + esc(PAYMAP[s.pay]||s.pay) + "</b></div>" +
-      '<div class="kv"><span>時間</span><b>' + dayLabel(dayKey(s.ts)) + " " + hhmm(s.ts) + "</b></div>" +
-      (s.note ? '<div class="kv"><span>備註</span><b>' + esc(s.note) + "</b></div>" : "") +
+      '<div class="kv"><span>' + (multi ? "整張單合計" : "金額") + '</span><b class="num" style="font-size:19px">' + money(total) + "</b></div>" +
+      (multi ? '<div class="kv"><span>件數</span><b class="num">' + items.length + " 件</b></div>"
+             : '<div class="kv"><span>品項</span><b>' + esc(head.cat) + "</b></div>") +
+      '<div class="kv"><span>收款</span><b class="tag ' + head.pay + '" style="font-size:14px">' + esc(PAYMAP[head.pay]||head.pay) + "</b></div>" +
+      '<div class="kv"><span>時間</span><b>' + dayLabel(dayKey(head.ts)) + " " + hhmm(head.ts) + "</b></div>" +
+      (note ? '<div class="kv"><span>備註</span><b>' + esc(note) + "</b></div>" : "") +
     "</div>" +
 
-    '<div class="card"><div class="eyebrow">修改</div>' +
-      '<div class="field"><label for="edAmt">金額</label>' +
-        '<input type="text" id="edAmt" inputmode="numeric" value="' + s.amount + '"></div>' +
-      '<div class="field"><label>品項</label><div class="chips" id="edCats">' +
-        cats.map(function(c){ return '<button type="button" class="chip' + (c.name===s.cat?" on":"") + '" data-ed-cat="' + esc(c.name) + '">' + esc(c.name) + "</button>"; }).join("") +
-        (catIndex(s.cat) === -1 ? '<button type="button" class="chip on" data-ed-cat="' + esc(s.cat) + '">' + esc(s.cat) + "</button>" : "") +
-      "</div></div>" +
+    (multi ? itemsCardHTML(items, picMap) : "") +
+
+    '<div class="card"><div class="eyebrow">' + (multi ? "修改整張訂單" : "修改") + "</div>" +
+      (multi ? "" :
+        '<div class="field"><label for="edAmt">金額</label>' +
+          '<input type="text" id="edAmt" inputmode="numeric" value="' + head.amount + '"></div>' +
+        '<div class="field"><label>品項</label><div class="chips" id="edCats">' + catChipsHTML(head.cat, "data-ed-cat") + "</div></div>") +
       '<div class="field"><label>收款方式</label><div class="chips" id="edPays">' +
-        PAYS.map(function(p){ return '<button type="button" class="chip' + (p.k===s.pay?" on":"") + '" data-ed-pay="' + p.k + '">' + p.n + "</button>"; }).join("") +
+        PAYS.map(function(p){ return '<button type="button" class="chip' + (p.k===head.pay?" on":"") + '" data-ed-pay="' + p.k + '">' + p.n + "</button>"; }).join("") +
       "</div></div>" +
       '<div class="field"><label for="edDate">日期與時間</label>' +
-        '<div class="two-up"><input type="date" id="edDate" value="' + dayKey(s.ts) + '">' +
-        '<input type="time" id="edTime" value="' + hhmm(s.ts) + '"></div></div>' +
+        '<div class="two-up"><input type="date" id="edDate" value="' + dayKey(head.ts) + '">' +
+        '<input type="time" id="edTime" value="' + hhmm(head.ts) + '"></div></div>' +
       '<div class="field"><label for="edNote">備註</label>' +
-        '<input type="text" id="edNote" maxlength="40" value="' + esc(s.note||"") + '"></div>' +
+        '<input type="text" id="edNote" maxlength="40" value="' + esc(note) + '"></div>' +
+      (multi ? '<p class="note-text">收款方式、日期時間、備註會套用到這張單的全部 ' + items.length + " 件。</p>" : "") +
       '<div class="field"><button type="button" class="btn primary" id="edSave">儲存修改</button>' +
-      '<button type="button" class="btn danger" id="edDel">刪除這一筆</button></div>' +
+      '<button type="button" class="btn danger" id="edDel">' + (multi ? "刪除整張訂單（" + items.length + " 件）" : "刪除這一筆") + "</button></div>" +
     "</div>";
 
-  var edCat = s.cat, edPay = s.pay;
-  $("edCats").addEventListener("click", function(e){
+  var edCat = head.cat, edPay = head.pay;
+  if (!multi) $("edCats").addEventListener("click", function(e){
     var b = e.target.closest("[data-ed-cat]"); if (!b) return;
     edCat = b.getAttribute("data-ed-cat");
     this.querySelectorAll(".chip").forEach(function(c){ c.classList.toggle("on", c === b); });
@@ -1164,46 +1332,89 @@ async function openDetail(id){
     this.querySelectorAll(".chip").forEach(function(c){ c.classList.toggle("on", c === b); });
   });
   $("edSave").addEventListener("click", async function(){
-    var v = parseInt(String($("edAmt").value).replace(/[^\d]/g, ""), 10);
-    if (!(v > 0)){ toast("金額要大於 0"); return; }
+    var v = null;
+    if (!multi){
+      v = parseInt(String($("edAmt").value).replace(/[^\d]/g, ""), 10);
+      if (!(v > 0)){ toast("金額要大於 0"); return; }
+    }
     var when = parseWhen($("edDate").value, $("edTime").value);
     if (when === null){ toast("日期或時間填得不完整，請重選"); return; }
-    s.amount = v; s.cat = edCat; s.pay = edPay; s.note = $("edNote").value.trim();
-    s.ts = when;
-    s.synced = 0;                               // 改過的要重新上傳
+    var nt = $("edNote").value.trim();
+    try {
+      for (var i=0;i<items.length;i++){
+        var s = items[i];
+        s.pay = edPay; s.note = nt; s.ts = when + i;   // 整張單搬到同一個時間，件的先後不變
+        s.synced = 0;                                  // 改過的要重新上傳
+        if (!multi){ s.amount = v; s.cat = edCat; }
+        await putSale(s);
+      }
+    } catch(e){ showStorageWarning(); }
     sales.sort(function(a,b){ return a.ts - b.ts; });
-
-    try { await putSale(s); } catch(e){ showStorageWarning(); }
     closeDetail(); renderAll(); toast("已更新");
   });
   $("edDel").addEventListener("click", async function(){
-    if (!armDelete){ armDelete = true; this.textContent = "再按一次就真的刪掉"; return; }
-    sales = sales.filter(function(x){ return x.id !== detailId; });
-    await delSale(detailId);
-    closeDetail(); renderAll(); toast("已刪除");
+    if (!armDelete){
+      armDelete = true;
+      this.textContent = multi ? "再按一次就刪掉這 " + items.length + " 件" : "再按一次就真的刪掉";
+      return;
+    }
+    var ids = items.map(function(x){ return x.id; }), gone = {};
+    ids.forEach(function(i){ gone[i] = 1; });
+    sales = sales.filter(function(x){ return !gone[x.id]; });
+    for (var i=0;i<ids.length;i++) await delSale(ids[i]);
+    closeDetail(); renderAll(); toast(multi ? "整張訂單已刪除" : "已刪除");
   });
 
   $("detail").hidden = false;
-  $("detail").scrollTop = 0;
+  if (!keepScroll) $("detail").scrollTop = 0;
+  var la = $("lineAmt");
+  if (la){ la.focus(); la.select(); }
 }
-function closeDetail(){ $("detail").hidden = true; detailId = null; }
+function closeDetail(){ $("detail").hidden = true; detailKey = null; editLine = null; }
+
+/** 存單獨那一件的修改。 */
+async function saveLine(id){
+  var s = sales.filter(function(x){ return x.id === id; })[0];
+  if (!s){ editLine = null; openDetail(detailKey, true); return; }
+  var box = $("lineAmt");
+  var v = parseInt(String((box && box.value) || "").replace(/[^\d]/g, ""), 10);
+  if (!(v > 0)){ toast("金額要大於 0"); return; }
+  s.amount = v;
+  if (editLineCat) s.cat = editLineCat;
+  s.synced = 0;
+  try { await putSale(s); } catch(e){ showStorageWarning(); }
+  editLine = null;
+  renderAll();
+  openDetail(detailKey, true);
+  toast("這一件已更新");
+}
+async function delLine(id){
+  if (itemsOfOrder(detailKey).length < 2) return;   // 最後一件要用「刪除整張訂單」
+  sales = sales.filter(function(x){ return x.id !== id; });
+  await delSale(id);
+  editLine = null;
+  renderAll();
+  openDetail(detailKey, true);
+  toast("已從這張訂單移除一件");
+}
 
 /* ---------- demo data ---------- */
 async function addDemo(){
-  var base = Date.now();
+  var base = Date.now(), o1 = uid(), o2 = uid();
+  // 故意放一張單件、一張兩件的，這樣一眼看得出多件訂單長什麼樣
   var rows = [
-    {cat:"項鍊", amount:680, pay:"cash",    note:"示範資料"},
-    {cat:"手鍊", amount:450, pay:"linepay", note:"示範資料"},
-    {cat:"戒指", amount:320, pay:"bank",    note:"示範資料"}
+    {oid:o1, ts: base - 3600000,     cat:"長項鍊",   amount:650, pay:"cash"},
+    {oid:o2, ts: base - 1800000,     cat:"手鍊",     amount:420, pay:"linepay"},
+    {oid:o2, ts: base - 1800000 + 1, cat:"大花戒指", amount:250, pay:"linepay"}
   ];
   for (var i=0;i<rows.length;i++){
-    var s = {id:uid(), ts: base - (rows.length-i)*1800000, cat:rows[i].cat, amount:rows[i].amount,
-             pay:rows[i].pay, note:rows[i].note, hasPhoto:false, demo:true};
+    var s = {id:uid(), oid:rows[i].oid, ts:rows[i].ts, cat:rows[i].cat, amount:rows[i].amount,
+             pay:rows[i].pay, note:"示範資料", hasPhoto:false, demo:true};
     sales.push(s);
     try { await putSale(s); } catch(e){ showStorageWarning(); }
   }
   renderAll();
-  toast("放了三筆示範資料，設定頁可以一鍵清掉");
+  toast("放了兩張示範訂單（其中一張 2 件），設定頁可以一鍵清掉");
 }
 async function clearDemo(){
   var gone = sales.filter(function(s){ return s.demo; });
@@ -1271,6 +1482,12 @@ $("fab").addEventListener("click", openSheet);
 $("cancelEntry").addEventListener("click", closeSheet);
 $("toStep2").addEventListener("click", toStep2);
 $("next1").addEventListener("click", toStep2);
+$("addMore").addEventListener("click", addLine);
+$("cartList").addEventListener("click", function(e){
+  var b = e.target.closest("[data-cart-del]"); if (!b) return;
+  draft.cart.splice(+b.getAttribute("data-cart-del"), 1);
+  renderCart(); renderAmount();
+});
 $("backStep1").addEventListener("click", function(){
   $("step2").hidden = true; $("step1").hidden = false; $("sheet").scrollTop = 0;
 });
@@ -1357,8 +1574,32 @@ document.addEventListener("pointerup", catDragEnd);
 document.addEventListener("pointercancel", catDragEnd);
 
 document.addEventListener("click", function(e){
-  var r = e.target.closest(".row[data-id]");
-  if (r) openDetail(r.getAttribute("data-id"));
+  var r = e.target.closest(".row[data-order]");
+  if (r) openDetail(r.getAttribute("data-order"));
+});
+
+/* 明細頁每次都重畫 innerHTML，所以「訂單內容」那張卡的按鈕用委派，掛在不會被換掉的容器上 */
+$("detailBody").addEventListener("click", function(e){
+  var t = e.target.closest("button"); if (!t) return;
+  if (t.hasAttribute("data-line")){
+    editLine = t.getAttribute("data-line");
+    var it = sales.filter(function(x){ return x.id === editLine; })[0];
+    editLineCat = it ? it.cat : "";
+    openDetail(detailKey, true);
+    return;
+  }
+  if (t.hasAttribute("data-line-cancel")){ editLine = null; openDetail(detailKey, true); return; }
+  if (t.hasAttribute("data-line-cat")){
+    editLineCat = t.getAttribute("data-line-cat");
+    var box = $("lineCats");
+    if (box) box.querySelectorAll(".chip").forEach(function(c){ c.classList.toggle("on", c === t); });
+    return;
+  }
+  if (t.hasAttribute("data-line-ok")){ saveLine(t.getAttribute("data-line-ok")); return; }
+  if (t.hasAttribute("data-line-del")){ delLine(t.getAttribute("data-line-del")); return; }
+});
+$("detailBody").addEventListener("keydown", function(e){
+  if (e.key === "Enter" && e.target.id === "lineAmt" && editLine){ e.preventDefault(); saveLine(editLine); }
 });
 
 $("payBtns").innerHTML = PAYS.map(function(p){

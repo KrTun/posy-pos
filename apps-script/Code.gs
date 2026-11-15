@@ -24,7 +24,11 @@
  */
 
 var SHEET_NAME = "sales";
-var HEADERS = ["id", "日期時間", "品項", "金額", "收款方式", "備註", "payKey", "照片"];
+/* 一列 = 賣掉的一件。同一個客人一次買好幾件，那幾列的「訂單編號」會一樣，
+   可以用它做樞紐分析算客單價。改版前上傳的舊列這一欄是空的，代表一張單只有一件。
+   新欄位一律加在最後，不要插在中間——push／photo／pull 都用固定欄號寫入。 */
+var HEADERS = ["id", "日期時間", "品項", "金額", "收款方式", "備註", "payKey", "照片", "訂單編號"];
+var COL_PHOTO = 8;
 
 function doPost(e) {
   try {
@@ -65,8 +69,26 @@ function sheet(props) {
     sh.setFrozenRows(1);
     sh.getRange("B:B").setNumberFormat("yyyy/mm/dd hh:mm");
     sh.getRange("D:D").setNumberFormat("#,##0");
+  } else {
+    fixHeaders(sh);
   }
   return sh;
+}
+
+/** 之前部署的版本標題列少一欄「訂單編號」，這裡自己補上，不動到任何資料列。 */
+function fixHeaders(sh) {
+  try {
+    if (sh.getMaxColumns() < HEADERS.length) {
+      sh.insertColumnsAfter(sh.getMaxColumns(), HEADERS.length - sh.getMaxColumns());
+    }
+    var head = sh.getRange(1, 1, 1, HEADERS.length).getValues()[0];
+    for (var i = 0; i < HEADERS.length; i++) {
+      if (String(head[i] || "") !== HEADERS[i]) {
+        sh.getRange(1, 1, 1, HEADERS.length).setValues([HEADERS]);
+        return;
+      }
+    }
+  } catch (err) { /* 標題補不上也不該讓整次上傳失敗 */ }
 }
 
 /** id -> 列號，用來判斷是新增還是更新。 */
@@ -96,12 +118,13 @@ function push(list, props) {
       String(s.pay || ""),
       String(s.note || ""),
       String(s.payKey || ""),
-      s.hasPhoto ? "有" : ""
+      s.hasPhoto ? "有" : "",
+      String(s.oid || s.id)
     ];
     if (map[String(s.id)]) {
       var r = map[String(s.id)];
-      var had = String(sh.getRange(r, 8).getValue() || "");
-      if (had.indexOf("http") === 0) row[7] = had;      // 別把已經寫好的 Drive 連結蓋掉
+      var had = String(sh.getRange(r, COL_PHOTO).getValue() || "");
+      if (had.indexOf("http") === 0) row[COL_PHOTO - 1] = had;   // 別把已經寫好的 Drive 連結蓋掉
       sh.getRange(r, 1, 1, HEADERS.length).setValues([row]);
       updated++;
     } else {
@@ -130,7 +153,7 @@ function photo(body, props) {
   try {
     var sh = sheet(props);
     var r = rowMap(sh)[String(body.id)];
-    if (r) sh.getRange(r, 8).setValue(f.getUrl());
+    if (r) sh.getRange(r, COL_PHOTO).setValue(f.getUrl());
   } catch (err) { /* 寫不進去不影響照片本身已經存好 */ }
 
   return { ok: true, fileId: f.getId(), url: f.getUrl() };
@@ -152,7 +175,8 @@ function pull(props) {
       amount: Number(v[i][3]) || 0,
       note: String(v[i][5] || ""),
       payKey: String(v[i][6] || "cash"),
-      photoUrl: pic.indexOf("http") === 0 ? pic : ""
+      photoUrl: pic.indexOf("http") === 0 ? pic : "",
+      oid: String(v[i][8] || v[i][0])        // 空的＝改版前的舊列，當成單件訂單
     });
   }
   return { ok: true, sales: out };
