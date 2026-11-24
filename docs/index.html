@@ -220,6 +220,44 @@ textarea{resize:vertical;min-height:90px;font-family:var(--num);font-size:11.5px
 .amount-box .val.zero{color:var(--faint)}
 .quick{display:flex;flex-wrap:wrap;gap:7px;margin-top:8px}
 .quick button{border:1px solid var(--line);background:var(--surface);border-radius:9px;padding:7px 11px;font-family:var(--num);font-size:13.5px;color:var(--muted)}
+.qty-bar{display:grid;grid-template-columns:4.2em 1fr 4.2em;align-items:stretch;gap:7px}
+.qty-bar button{border:1px solid var(--line);background:var(--surface);border-radius:11px;font-family:var(--num);font-size:22px;font-weight:500;padding:0}
+.qty-bar button:active{background:var(--surface-2)}
+.qty-bar button:disabled{opacity:.3}
+.qty-mid{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;background:var(--surface);border:1px solid var(--line);border-radius:11px;padding:8px}
+.qty-mid b{font-family:var(--num);font-variant-numeric:tabular-nums;font-size:20px;font-weight:600;line-height:1.15}
+.qty-mid b .u{font-family:var(--ui);font-size:12.5px;font-weight:500;color:var(--muted);margin-left:3px}
+.qty-mid em{font-style:normal;font-family:var(--num);font-size:12px;line-height:1.3;min-height:1.3em;color:var(--muted)}
+.calc-fab{
+  position:fixed;z-index:47;display:grid;place-items:center;
+  right:max(16px,env(safe-area-inset-right,0px));
+  bottom:calc(16px + env(safe-area-inset-bottom,0px));
+  width:54px;height:54px;padding:0;border-radius:50%;
+  border:1px solid var(--line);background:var(--surface);color:var(--accent);
+  box-shadow:0 7px 20px rgba(120,70,64,.26);
+}
+.calc-fab:active{transform:scale(.95)}
+.calc-fab[aria-expanded="true"]{background:var(--accent);color:var(--accent-ink);border-color:transparent}
+.pop-back{position:fixed;inset:0;z-index:45;background:rgba(90,52,48,.22)}
+.pop{
+  position:fixed;z-index:46;left:50%;transform:translateX(-50%);
+  bottom:calc(82px + env(safe-area-inset-bottom,0px));
+  width:min(352px,calc(100vw - 28px));max-height:calc(100vh - 150px);overflow-y:auto;
+  background:var(--bg);border:1px solid var(--line);border-radius:16px;
+  box-shadow:0 16px 44px rgba(120,70,64,.3);padding:13px;
+}
+.pop-bar{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:9px}
+.pop-bar h2{font-size:14px;font-weight:600;margin:0}
+.pop .amount-box .cur{font-size:13.5px}
+.pop .amount-box .val{font-size:30px}
+.pop .pad{margin-top:8px}
+.pop .pad button{padding:12px 0;font-size:20px}
+.pop .note-text{margin-top:7px}
+.change-box{display:flex;align-items:baseline;justify-content:space-between;gap:10px;background:var(--surface-2);border-radius:11px;padding:10px 13px;margin-top:9px}
+.change-box .l{font-size:13px;color:var(--muted)}
+.change-box .r{font-family:var(--num);font-variant-numeric:tabular-nums;font-size:23px;font-weight:600}
+.change-box .r.short{color:var(--danger);font-size:18px}
+.change-box.due{background:var(--accent-soft)}
 .pad{display:grid;grid-template-columns:repeat(3,1fr);gap:7px;margin-top:10px}
 .pad button{
   border:1px solid var(--line);background:var(--surface);border-radius:11px;padding:15px 0;
@@ -344,6 +382,18 @@ textarea{resize:vertical;min-height:90px;font-family:var(--num);font-size:11.5px
         </div>
       </div>
 
+      <div class="field">
+        <label>數量</label>
+        <div class="qty-bar">
+          <button type="button" id="qtyMinus" aria-label="減一件" disabled>−</button>
+          <div class="qty-mid">
+            <b><span id="qtyVal">1</span><span class="u">件</span></b>
+            <em id="qtySub"></em>
+          </div>
+          <button type="button" id="qtyPlus" aria-label="加一件">＋</button>
+        </div>
+      </div>
+
       <div class="field" id="cartField" hidden>
         <label>這筆訂單已經加了 <span id="cartCount">0</span> 件</label>
         <div class="cat-list" id="cartList"></div>
@@ -353,7 +403,7 @@ textarea{resize:vertical;min-height:90px;font-family:var(--num);font-size:11.5px
       <div class="field">
         <button type="button" class="btn" id="addMore" disabled>＋ 繼續新增</button>
         <button type="button" class="btn primary" id="next1" disabled>下一步：收款方式</button>
-        <p class="note-text">同一個客人買好幾件就按「繼續新增」，把這幾件加成一張訂單、最後只收一次款。只買一件就直接按下一步。按完「繼續新增」金額會清空，同一款再賣一件就再點一次那個品項帶價。</p>
+        <p class="note-text">同一款多賣幾件→按上面的＋。換別的品項→按「繼續新增」，這幾件會記成同一張訂單、最後只收一次款。</p>
       </div>
     </div>
 
@@ -375,8 +425,40 @@ textarea{resize:vertical;min-height:90px;font-family:var(--num);font-size:11.5px
         <input type="text" id="noteInput" placeholder="例：市集攤友、客人訂做" maxlength="40">
       </div>
 
+      <!-- 圓鈕和小視窗都浮在最上層；放在 step2 裡面，回上一步時會跟著消失。
+           小視窗的 bottom 留了 82px，就是為了不要蓋到這顆圓鈕——蓋住了就沒辦法「再點一次收回去」 -->
+      <button type="button" class="calc-fab" id="changeToggle" aria-expanded="false" aria-label="找錢計算機" title="找錢計算機">
+        <svg viewBox="0 0 24 24" width="23" height="23" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <rect x="4.5" y="2.5" width="15" height="19" rx="2.8"/>
+          <rect x="7.6" y="5.6" width="8.8" height="3.4" rx="1"/>
+          <path d="M8.3 12.8h.01M12 12.8h.01M15.7 12.8h.01M8.3 16.4h.01M12 16.4h.01M15.7 16.4h.01"/>
+        </svg>
+      </button>
+
+      <div class="pop-back" id="changeBack" hidden></div>
+      <div class="pop" id="changePanel" hidden role="dialog" aria-label="找錢計算機">
+        <div class="pop-bar">
+          <h2>找錢計算機</h2>
+          <button type="button" class="mini x" id="changeClose" aria-label="收起計算機">✕</button>
+        </div>
+        <div class="amount-box">
+          <span class="cur">客人給了 NT$</span>
+          <span class="val zero" id="cashVal">0</span>
+        </div>
+        <div class="pad" id="cashPad">
+          <button type="button" data-k="1">1</button><button type="button" data-k="2">2</button><button type="button" data-k="3">3</button>
+          <button type="button" data-k="4">4</button><button type="button" data-k="5">5</button><button type="button" data-k="6">6</button>
+          <button type="button" data-k="7">7</button><button type="button" data-k="8">8</button><button type="button" data-k="9">9</button>
+          <button type="button" data-k="00" class="wide">00</button><button type="button" data-k="0">0</button><button type="button" data-k="del" class="wide">⌫</button>
+        </div>
+        <div class="change-box due"><span class="l">要找給客人</span><span class="r" id="changeVal">—</span></div>
+        <p class="note-text">只是算給你看的，不會記進帳。</p>
+      </div>
+
+
+
       <div class="pays" id="payBtns"></div>
-      <p class="note-text">按下收款方式就完成這一筆，按錯可以馬上撤銷。</p>
+      <p class="note-text">按下收款方式就完成這一筆，按錯可以馬上撤銷。要算找零就點右下角的計算機。</p>
     </div>
   </div>
 </div>
@@ -1094,11 +1176,13 @@ function freshLine(keepCat, blank){
   var c = i !== -1 ? cats[i] : (cats[0] || {name:"其他", price:0});
   draft.cat = c.name;
   draft.amount = (!blank && c.price) ? String(c.price) : "";
+  draft.qty = 1;
   pendingPhoto = null;
   resetShot();
 }
 function openSheet(){
-  draft = {cart:[], cat:"", amount:""};
+  draft = {cart:[], cat:"", amount:"", qty:1};
+  closeChange();
   freshLine(null);
   $("noteInput").value = "";
   $("step2").hidden = true;
@@ -1111,6 +1195,7 @@ function closeSheet(){
   $("sheet").hidden = true;
   pendingPhoto = null;
   draft = null;
+  closeChange();
 }
 function resetShot(){
   $("shotWrap").hidden = true;
@@ -1130,27 +1215,49 @@ function renderQuick(){
     ? q.map(function(a){ return '<button type="button" data-amt="' + a + '">' + money(a) + "</button>"; }).join("")
     : "";
 }
+var cashStr = "";        // 找錢計算機打進去的數字，不存檔、不進帳
+function cashAmount(){ return cashStr === "" ? 0 : (parseInt(cashStr, 10) || 0); }
+/** 離開這張單就收起來、數字歸零，不要把上一個客人的現金留給下一個。 */
+function closeChange(){
+  cashStr = "";
+  var p = $("changePanel");
+  if (!p) return;
+  p.hidden = true;
+  $("changeBack").hidden = true;
+  $("changeToggle").setAttribute("aria-expanded", "false");
+}
 function curAmount(){ return draft.amount === "" ? 0 : (parseInt(draft.amount, 10) || 0); }
 /** 這張單目前的全部件數：已加入的，加上還在輸入中、金額已經有數字的那一件。 */
 function draftLines(){
   var out = draft.cart.slice();
   var v = curAmount();
-  if (v > 0 && draft.cat) out.push({cat:draft.cat, amount:v, photo:pendingPhoto});
+  if (v > 0 && draft.cat) out.push({cat:draft.cat, amount:v, qty:draft.qty, photo:pendingPhoto});
   return out;
 }
-function lineSum(lines){ var t = 0; lines.forEach(function(l){ t += l.amount; }); return t; }
+/* 數量只活在記帳介面：存檔時會展開成 N 列，一列永遠是賣掉的一件。
+   cart 列沒有 qty 就當 1 件算。 */
+function lineQty(l){ return Math.max(1, l.qty || 1); }
+function lineTotal(l){ return l.amount * lineQty(l); }
+function lineSum(lines){ var t = 0; lines.forEach(function(l){ t += lineTotal(l); }); return t; }
+function lineCount(lines){ var n = 0; lines.forEach(function(l){ n += lineQty(l); }); return n; }
 function lineRowHTML(l, i, delAttr){
+  var n = lineQty(l);
   return '<div class="cat-row">' +
     (l.photo ? '<img class="thumb sm" src="' + l.photo + '" alt="">' : '<span class="thumb empty sm" aria-hidden="true">◇</span>') +
-    '<span class="nm"><b>' + esc(l.cat) + "</b><em>" + money(l.amount) + "</em></span>" +
-    (delAttr ? '<button type="button" class="mini x" data-cart-del="' + i + '" aria-label="從這筆訂單移除">✕</button>' : "") +
+    '<span class="nm"><b>' + esc(l.cat) + (n > 1 ? " ×" + n : "") + "</b><em>" +
+      (n > 1 ? money(l.amount) + " × " + n + " ＝ " + money(lineTotal(l)) : money(l.amount)) + "</em></span>" +
+    (delAttr
+      ? '<button type="button" class="mini" data-cart-dec="' + i + '" aria-label="這款減一件">−</button>' +
+        '<button type="button" class="mini" data-cart-inc="' + i + '" aria-label="這款加一件">＋</button>' +
+        '<button type="button" class="mini x" data-cart-del="' + i + '" aria-label="從這筆訂單移除">✕</button>'
+      : "") +
   "</div>";
 }
 function renderCart(){
   var n = draft.cart.length;
   $("cartField").hidden = !n;
   if (!n) return;
-  $("cartCount").textContent = n;
+  $("cartCount").textContent = lineCount(draft.cart);
   $("cartList").innerHTML = draft.cart.map(function(l, i){ return lineRowHTML(l, i, true); }).join("");
   $("cartSub").textContent = money(lineSum(draft.cart));
 }
@@ -1159,35 +1266,69 @@ function renderAmount(){
   var el = $("amtVal");
   el.textContent = v.toLocaleString("zh-TW");
   el.classList.toggle("zero", v === 0);
-  var lines = draftLines();
+  var lines = draftLines(), cnt = lineCount(lines);
   $("addMore").disabled = !(v > 0 && draft.cat);
   $("next1").disabled = !lines.length;
-  $("next1").textContent = lines.length > 1
-    ? "下一步：收款方式（" + lines.length + " 件 " + money(lineSum(lines)) + "）"
+  $("next1").textContent = cnt > 1
+    ? "下一步：收款方式（" + cnt + " 件 " + money(lineSum(lines)) + "）"
     : "下一步：收款方式";
   $("toStep2").style.color = lines.length ? "var(--accent)" : "var(--muted)";
+  renderQty();
+}
+/** 數量欄：只管「正在輸入的那一件」，並把單價×N 算給她看。 */
+function renderQty(){
+  var n = draft.qty, v = curAmount();
+  $("qtyVal").textContent = n;
+  $("qtyMinus").disabled = n <= 1;
+  // 這行的高度固定留著，按＋的時候下面的按鈕才不會跳一下導致按錯
+  $("qtySub").textContent = v <= 0 ? ""
+    : (n > 1 ? money(v) + " × " + n + " ＝ " + money(v * n) : "一件 " + money(v));
+}
+
+/* ---------- 找錢計算：純算給人看，不寫進帳也不动欄位 ---------- */
+function renderChange(){
+  if (!draft) return;
+  var v = cashAmount(), need = lineSum(draftLines()), d = v - need;
+  var el = $("cashVal"), r = $("changeVal");
+  el.textContent = v.toLocaleString("zh-TW");
+  el.classList.toggle("zero", v === 0);
+  if (!cashStr){ r.textContent = "—"; r.className = "r"; }
+  else if (d < 0){ r.textContent = "還差 " + money(-d); r.className = "r short"; }
+  else { r.textContent = money(d); r.className = "r"; }
 }
 /** 把輸入中的那一件收進這張單，接著記下一件。 */
 function addLine(){
   var v = curAmount();
   if (!(v > 0 && draft.cat)) return;
-  var nm = draft.cat;
-  draft.cart.push({cat:nm, amount:v, photo:pendingPhoto});
+  var nm = draft.cat, n = draft.qty, hit = -1;
+  // 同品項、同價、兩邊都沒拍照 → 併進同一列加數量，
+  // 讓「數量」與「繼續新增」兩條路徑的結果一致。有照片就不併，照片是每件各自的。
+  if (!pendingPhoto){
+    for (var i=0;i<draft.cart.length;i++){
+      var c = draft.cart[i];
+      if (c.cat === nm && c.amount === v && !c.photo){ hit = i; break; }
+    }
+  }
+  if (hit !== -1) draft.cart[hit].qty = lineQty(draft.cart[hit]) + n;
+  else draft.cart.push({cat:nm, amount:v, qty:n, photo:pendingPhoto});
   freshLine(nm, true);
   renderCats(); renderCart(); renderAmount();
   $("sheet").scrollTop = 0;
-  toast("加入 " + nm + " " + money(v) + "，這張單共 " + draft.cart.length + " 件");
+  toast("加入 " + nm + (n > 1 ? " ×" + n : "") + " " + money(v * n) +
+        "，這張單共 " + lineCount(draft.cart) + " 件");
 }
 function toStep2(){
-  var lines = draftLines();
+  var lines = draftLines(), cnt = lineCount(lines);
   if (!lines.length) return;
-  $("recapCat").textContent = lines.length > 1
-    ? lines.length + " 件"
+  closeChange();
+  $("recapCat").textContent = cnt > 1
+    ? cnt + " 件"
     : lines[0].cat + (lines[0].photo ? "・已拍照" : "");
   $("recapAmt").textContent = money(lineSum(lines));
   var rl = $("recapList");
-  rl.hidden = lines.length < 2;
-  rl.innerHTML = lines.length < 2 ? "" : lines.map(function(l, i){ return lineRowHTML(l, i, false); }).join("");
+  rl.hidden = cnt < 2;
+  rl.innerHTML = cnt < 2 ? "" : lines.map(function(l, i){ return lineRowHTML(l, i, false); }).join("");
+  renderChange();
   $("step1").hidden = true;
   $("step2").hidden = false;
   $("sheet").scrollTop = 0;
@@ -1197,22 +1338,31 @@ async function commit(pay){
   if (!lines.length) return;
   var note = $("noteInput").value.trim();
   var now = Date.now(), oid = uid(), total = lineSum(lines);
-  // 同一張單共用 oid；ts 差 1 毫秒只是讓件的順序穩定，顯示上同分同秒
-  var rows = lines.map(function(l, i){
-    return {id: uid(), oid: oid, ts: now + i, cat: l.cat, amount: l.amount,
-            pay: pay, note: note, hasPhoto: !!l.photo};
+  // 同一張單共用 oid；數量 N 在這裡展開成 N 列（一列＝賣掉的一件，資料模型沒變）；
+  // ts 差 1 毫秒只是讓件的順序穩定，顯示上同分同秒
+  var rows = [], pics = [], k = 0;
+  lines.forEach(function(l){
+    var n = lineQty(l);
+    for (var j=0;j<n;j++){
+      // 照片只掛在同款的第一件：同一張 data URL 存 N 份是白白吃掉配額
+      var pic = (j === 0) ? l.photo : null;
+      rows.push({id: uid(), oid: oid, ts: now + k, cat: l.cat, amount: l.amount,
+                 pay: pay, note: note, hasPhoto: !!pic});
+      pics.push(pic);
+      k++;
+    }
   });
   // 照片要先進記憶體再重畫，不然列表的縮圖會比 putPhoto 早一步去資料庫找，找不到就畫成「照片存不見了」
   rows.forEach(function(r, i){
     sales.push(r);
-    if (lines[i].photo) photoMem.set(r.id, lines[i].photo);
+    if (pics[i]) photoMem.set(r.id, pics[i]);
   });
   closeSheet();
   view = "today"; syncNav();
   renderAll();
   try {
     for (var i=0;i<rows.length;i++){
-      if (lines[i].photo) await putPhoto(rows[i].id, lines[i].photo);
+      if (pics[i]) await putPhoto(rows[i].id, pics[i]);
       await putSale(rows[i]);
     }
   } catch(e){
@@ -1483,12 +1633,48 @@ $("cancelEntry").addEventListener("click", closeSheet);
 $("toStep2").addEventListener("click", toStep2);
 $("next1").addEventListener("click", toStep2);
 $("addMore").addEventListener("click", addLine);
+$("qtyMinus").addEventListener("click", function(){
+  if (draft.qty > 1){ draft.qty--; renderAmount(); }
+});
+$("qtyPlus").addEventListener("click", function(){
+  if (draft.qty < 99){ draft.qty++; renderAmount(); }
+});
 $("cartList").addEventListener("click", function(e){
-  var b = e.target.closest("[data-cart-del]"); if (!b) return;
-  draft.cart.splice(+b.getAttribute("data-cart-del"), 1);
+  var b = e.target.closest("[data-cart-del],[data-cart-inc],[data-cart-dec]"); if (!b) return;
+  var i;
+  if (b.hasAttribute("data-cart-del")) draft.cart.splice(+b.getAttribute("data-cart-del"), 1);
+  else if (b.hasAttribute("data-cart-inc")){
+    i = +b.getAttribute("data-cart-inc");
+    if (lineQty(draft.cart[i]) < 99) draft.cart[i].qty = lineQty(draft.cart[i]) + 1;
+  } else {
+    i = +b.getAttribute("data-cart-dec");
+    // 減到 0 就是把這列抽掉，不要留一列 0 件
+    if (lineQty(draft.cart[i]) > 1) draft.cart[i].qty = lineQty(draft.cart[i]) - 1;
+    else draft.cart.splice(i, 1);
+  }
   renderCart(); renderAmount();
 });
+$("changeToggle").addEventListener("click", function(){
+  if (!$("changePanel").hidden){ closeChange(); return; }   // 再按一次就收回去
+  $("changePanel").hidden = false;
+  $("changeBack").hidden = false;
+  this.setAttribute("aria-expanded", "true");
+  renderChange();
+});
+// 遮罩層存在的理由：小視窗是蓋在收款按鈕上面的，
+// 沒有它的話，滱到旁邊就會直接按到「現金」把這筆成交掉。
+$("changeBack").addEventListener("click", closeChange);
+$("changeClose").addEventListener("click", closeChange);
+$("cashPad").addEventListener("click", function(e){
+  var b = e.target.closest("button[data-k]"); if (!b || !draft) return;
+  var k = b.getAttribute("data-k");
+  if (k === "del") cashStr = cashStr.slice(0, -1);
+  else if (cashStr.length < 7) cashStr = (cashStr + k).replace(/^0+(?=\d)/, "");
+  renderChange();
+});
+
 $("backStep1").addEventListener("click", function(){
+  closeChange();
   $("step2").hidden = true; $("step1").hidden = false; $("sheet").scrollTop = 0;
 });
 $("closeDetail").addEventListener("click", closeDetail);
